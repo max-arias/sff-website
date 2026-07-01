@@ -1,4 +1,4 @@
-import type { CasePart, GpuPart, IntakeResult, RawSheetRow } from "../types";
+import type { CasePart, GenericPart, GpuPart, IntakeResult, RawSheetRow } from "../types";
 
 function escapeSql(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "null";
@@ -79,9 +79,62 @@ function rawInsert(runId: string, row: RawSheetRow) {
   ].join(", ")});`;
 }
 
+function genericPartInsert(runId: string, part: GenericPart) {
+  return `insert into sff_parts (id, import_run_id, kind, source_sheet, row_number, brand, name, display_name, status, flags_json, raw_json) values (${[
+    escapeSql(part.id),
+    escapeSql(runId),
+    escapeSql(part.kind),
+    escapeSql(part.sourceSheet),
+    escapeSql(part.rowNumber),
+    escapeSql(part.brand),
+    escapeSql(part.name),
+    escapeSql(part.displayName),
+    escapeSql(part.status),
+    json(part.flags),
+    json(part.raw)
+  ].join(", ")});`;
+}
+
+function genericSpecInsert(part: GenericPart, key: string, value: string) {
+  const id = `${part.id}-spec-${key}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `insert into sff_part_specs (id, part_id, spec_key, spec_value) values (${[
+    escapeSql(id),
+    escapeSql(part.id),
+    escapeSql(key),
+    escapeSql(value)
+  ].join(", ")});`;
+}
+
+function genericDimensionInsert(part: GenericPart, key: string, value: number) {
+  const id = `${part.id}-dimension-${key}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `insert into sff_part_dimensions (id, part_id, dimension_key, value) values (${[
+    escapeSql(id),
+    escapeSql(part.id),
+    escapeSql(key),
+    escapeSql(value)
+  ].join(", ")});`;
+}
+
+function genericSourceRowInsert(runId: string, row: RawSheetRow, partKind: string) {
+  const id = `${runId}-${partKind}-${row.sourceSheet}-${row.rowNumber}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `insert into sff_part_source_rows (id, import_run_id, part_kind, source_sheet, row_number, row_json) values (${[
+    escapeSql(id),
+    escapeSql(runId),
+    escapeSql(partKind),
+    escapeSql(row.sourceSheet),
+    escapeSql(row.rowNumber),
+    json(row.values)
+  ].join(", ")});`;
+}
+
 export function buildSeedSql(result: IntakeResult) {
   const runId = `import-${result.generatedAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}`;
+  const partKindBySourceRow = new Map(result.parts.map((part) => [`${part.sourceSheet}:${part.rowNumber}`, part.kind]));
   const lines = [
+    "delete from sff_part_dimensions;",
+    "delete from sff_part_specs;",
+    "delete from sff_part_source_rows;",
+    "delete from sff_parts;",
     "delete from raw_sheet_rows;",
     "delete from cases;",
     "delete from gpus;",
@@ -95,9 +148,19 @@ export function buildSeedSql(result: IntakeResult) {
       escapeSql(result.gpus.length),
       escapeSql(result.warnings.length)
     ].join(", ")});`,
+    ...result.parts.map((part) => genericPartInsert(runId, part)),
+    ...result.parts.flatMap((part) => Object.entries(part.specs).map(([key, value]) => genericSpecInsert(part, key, value))),
+    ...result.parts.flatMap((part) =>
+      Object.entries(part.dimensions).map(([key, value]) => genericDimensionInsert(part, key, value))
+    ),
+    ...result.rawRows.map((row) =>
+      genericSourceRowInsert(runId, row, partKindBySourceRow.get(`${row.sourceSheet}:${row.rowNumber}`) ?? "unknown")
+    ),
     ...result.cases.map((part) => caseInsert(runId, part)),
     ...result.gpus.map((part) => gpuInsert(runId, part)),
-    ...result.rawRows.map((row) => rawInsert(runId, row))
+    ...result.rawRows
+      .filter((row) => row.sourceSheet.toLowerCase().includes("gpu") || row.sourceSheet.toLowerCase().includes("case"))
+      .map((row) => rawInsert(runId, row))
   ];
 
   return lines.join("\n");

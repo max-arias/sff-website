@@ -1,4 +1,21 @@
-export type PartKind = "case" | "gpu";
+export type PartKind =
+  | "case"
+  | "gpu"
+  | "cpu-cooler"
+  | "aio"
+  | "fan"
+  | "ram"
+  | "pcie-riser"
+  | "motherboard"
+  | "psu"
+  | "cpu"
+  | "chipset"
+  | "wifi"
+  | "storage"
+  | "radiator"
+  | "prebuilt"
+  | "reference"
+  | "unknown";
 
 export type FitVerdict = "pass" | "fail" | "conditional";
 
@@ -6,6 +23,21 @@ export interface RawSheetRow {
   sourceSheet: string;
   rowNumber: number;
   values: Record<string, string>;
+}
+
+export interface GenericPart {
+  id: string;
+  kind: PartKind;
+  sourceSheet: string;
+  rowNumber: number;
+  brand: string;
+  name: string;
+  displayName: string;
+  status: string;
+  specs: Record<string, string>;
+  dimensions: Record<string, number>;
+  flags: string[];
+  raw: Record<string, string>;
 }
 
 export interface CasePart {
@@ -63,6 +95,7 @@ export type SffPart = CasePart | GpuPart;
 export interface IntakeResult {
   generatedAt: string;
   rawRows: RawSheetRow[];
+  parts: GenericPart[];
   cases: CasePart[];
   gpus: GpuPart[];
   warnings: string[];

@@ -1,5 +1,5 @@
 import { parse } from "csv-parse/sync";
-import type { CasePart, GpuPart, IntakeResult, RawSheetRow } from "../types";
+import type { CasePart, GenericPart, GpuPart, IntakeResult, PartKind, RawSheetRow } from "../types";
 
 const SHEET_ID = "1AddRvGWJ_f4B6UC7_IftDiVudVc8CJ8sxLUqlxVsCz4";
 
@@ -7,6 +7,37 @@ export const SFF_SHEETS = {
   cases: ["SFF Case <10L", "SFF Case 10L-20L"],
   gpus: ["SFF GPU <215mm", "GPU >215mm"]
 } as const;
+
+export const SFF_V1_SHEETS = [
+  "SFF Case <10L",
+  "SFF Case 10L-20L",
+  "MFF Case >20L",
+  "CPU Cooler <70mm",
+  "CPU Cooler >70mm",
+  "AIO",
+  "Slim Fan",
+  "Fans",
+  "RAM Height",
+  "PCIe Riser",
+  "SFF GPU <215mm",
+  "GPU >215mm",
+  "GPU Spec",
+  "mITX Boards",
+  "mATX Boards",
+  "PSU",
+  "CPU",
+  "Chipset",
+  "Wi-Fi",
+  "Console & Pre-Built",
+  "SSD",
+  "CPU Cooler Chart",
+  "Thermalright Coolers & Fans",
+  "Radiators",
+  "Recommended Components for SFF Cases",
+  "1151 v2 Motherboard List",
+  "AM4 Motherboard List",
+  "VLP RAM"
+] as const;
 
 function sheetCsvUrl(sheetName: string) {
   return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
@@ -58,6 +89,105 @@ function dimensionFlags(values: Record<string, string>, keys: string[]) {
       return isUnknown(value) || value.includes("~");
     })
     .map((key) => `ambiguous:${key}`);
+}
+
+function partKindFromSheet(sheetName: string): PartKind {
+  const name = sheetName.toLowerCase();
+  if (name.includes("case") || name.includes("recommended components")) return "case";
+  if (name.includes("gpu")) return "gpu";
+  if (name.includes("cpu cooler") || name.includes("thermalright")) return "cpu-cooler";
+  if (name === "aio") return "aio";
+  if (name.includes("fan")) return "fan";
+  if (name.includes("ram")) return "ram";
+  if (name.includes("riser")) return "pcie-riser";
+  if (name.includes("board") || name.includes("motherboard")) return "motherboard";
+  if (name === "psu") return "psu";
+  if (name === "cpu") return "cpu";
+  if (name.includes("chipset")) return "chipset";
+  if (name.includes("wi-fi")) return "wifi";
+  if (name.includes("ssd")) return "storage";
+  if (name.includes("radiator")) return "radiator";
+  if (name.includes("console") || name.includes("pre-built")) return "prebuilt";
+  return "unknown";
+}
+
+function firstCell(values: Record<string, string>, keys: string[]) {
+  for (const key of keys) {
+    const value = cell(values, key);
+    if (value) return value;
+  }
+  return "";
+}
+
+function firstNonEmptyValue(values: Record<string, string>) {
+  return Object.values(values).find((value) => value.trim())?.trim() ?? "";
+}
+
+function normalizeSpecKey(key: string) {
+  return key
+    .trim()
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+function normalizeGenericPart(raw: RawSheetRow): GenericPart {
+  const values = raw.values;
+  const kind = partKindFromSheet(raw.sourceSheet);
+  const brand = firstCell(values, ["Brand", "Seller", "Manufacturer", "Make", "Company"]);
+  const name = firstCell(values, [
+    "Name",
+    "Model",
+    "Case",
+    "Cooler",
+    "Fan",
+    "RAM",
+    "Riser",
+    "Motherboard",
+    "PSU",
+    "CPU",
+    "GPU",
+    "Chipset",
+    "SSD"
+  ]);
+  const fallbackName = firstNonEmptyValue(values);
+  const displayName = [brand, name || fallbackName].filter(Boolean).join(" ").trim();
+  const status = firstCell(values, ["Status", "Availability"]);
+  const specs = Object.fromEntries(
+    Object.entries(values)
+      .map(([key, value]) => [normalizeSpecKey(key), value.trim()] as const)
+      .filter(([key, value]) => key && value)
+  );
+  const dimensions = Object.fromEntries(
+    Object.entries(values)
+      .map(([key, value]) => [normalizeSpecKey(key), parseNumber(value)] as const)
+      .filter(([key, value]) => key && value !== null && /height|length|width|thick|volume|size|slot|watt|tdp|clearance|depth|diameter|capacity/.test(key))
+  ) as Record<string, number>;
+  const flags = Object.entries(values)
+    .filter(([key, value]) => {
+      const normalized = value.trim().toLowerCase();
+      return key.trim() && (isUnknown(normalized) || normalized.includes("~") || normalized.includes("?"));
+    })
+    .map(([key]) => `ambiguous:${normalizeSpecKey(key)}`);
+
+  if (!displayName) flags.push("missing-name");
+  if (status && !["link", "available"].includes(status.toLowerCase())) flags.push(`status:${status.toLowerCase()}`);
+
+  return {
+    id: stableId(["part", kind, raw.sourceSheet, brand, name || fallbackName, raw.rowNumber]),
+    kind,
+    sourceSheet: raw.sourceSheet,
+    rowNumber: raw.rowNumber,
+    brand,
+    name: name || fallbackName,
+    displayName,
+    status,
+    specs,
+    dimensions,
+    flags,
+    raw: values
+  };
 }
 
 function normalizeCase(raw: RawSheetRow): CasePart {
@@ -197,19 +327,27 @@ async function fetchSheet(sheetName: string): Promise<RawSheetRow[]> {
 }
 
 export async function fetchAndNormalizeAll(): Promise<IntakeResult> {
-  const [caseRows, gpuRows] = await Promise.all([
-    Promise.all(SFF_SHEETS.cases.map(fetchSheet)),
-    Promise.all(SFF_SHEETS.gpus.map(fetchSheet))
-  ]);
-
-  const rawCaseRows = caseRows.flat();
-  const rawGpuRows = gpuRows.flat();
+  const warnings: string[] = [];
+  const allSheetRows = await Promise.all(
+    SFF_V1_SHEETS.map(async (sheetName) => {
+      try {
+        return await fetchSheet(sheetName);
+      } catch (error) {
+        warnings.push(`Failed to fetch ${sheetName}: ${error instanceof Error ? error.message : String(error)}`);
+        return [];
+      }
+    })
+  );
+  const rawRows = allSheetRows.flat();
+  const rawCaseRows = rawRows.filter((row) => (SFF_SHEETS.cases as readonly string[]).includes(row.sourceSheet));
+  const rawGpuRows = rawRows.filter((row) => (SFF_SHEETS.gpus as readonly string[]).includes(row.sourceSheet));
 
   return {
     generatedAt: new Date().toISOString(),
-    rawRows: [...rawCaseRows, ...rawGpuRows],
+    rawRows,
+    parts: rawRows.map(normalizeGenericPart).filter((part) => part.displayName),
     cases: rawCaseRows.map(normalizeCase).filter((part) => part.name),
     gpus: rawGpuRows.map(normalizeGpu).filter((part) => part.model || part.name),
-    warnings: []
+    warnings
   };
 }

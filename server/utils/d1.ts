@@ -1,5 +1,5 @@
-import type { CasePart, GpuPart } from "../../app/types";
-import { readSnapshot, rowToCase, rowToGpu } from "./snapshot";
+import type { CasePart, GenericPart, GpuPart } from "../../app/types";
+import { readSnapshot, rowToCase, rowToGenericPart, rowToGpu } from "./snapshot";
 
 interface D1Result<T> {
   results?: T[];
@@ -57,5 +57,53 @@ export async function findCaseAndGpu(event: unknown, caseId: string, gpuId: stri
     casePart: parts.cases.find((part) => part.id === caseId) ?? null,
     gpuPart: parts.gpus.find((part) => part.id === gpuId) ?? null,
     source: parts.source
+  };
+}
+
+function summarizeParts(parts: GenericPart[]) {
+  const byKind: Record<string, number> = {};
+  const bySourceSheet: Record<string, number> = {};
+
+  for (const part of parts) {
+    byKind[part.kind] = (byKind[part.kind] ?? 0) + 1;
+    bySourceSheet[part.sourceSheet] = (bySourceSheet[part.sourceSheet] ?? 0) + 1;
+  }
+
+  return {
+    total: parts.length,
+    byKind,
+    bySourceSheet
+  };
+}
+
+export async function loadCatalog(event: unknown): Promise<{
+  parts: GenericPart[];
+  source: "d1" | "snapshot";
+  summary: {
+    total: number;
+    byKind: Record<string, number>;
+    bySourceSheet: Record<string, number>;
+  };
+}> {
+  const db = getDb(event);
+
+  if (!db) {
+    const snapshot = await readSnapshot();
+    return {
+      parts: snapshot.parts,
+      source: "snapshot",
+      summary: summarizeParts(snapshot.parts)
+    };
+  }
+
+  const rows = await db
+    .prepare("select * from sff_parts order by kind, display_name limit 20000")
+    .all<Record<string, unknown>>();
+  const parts = (rows.results ?? []).map(rowToGenericPart);
+
+  return {
+    parts,
+    source: "d1",
+    summary: summarizeParts(parts)
   };
 }

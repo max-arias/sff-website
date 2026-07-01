@@ -13,9 +13,11 @@ export default defineEventHandler(async (event) => {
 
   return {
     generatedAt: result.generatedAt,
+    partCount: result.parts.length,
     caseCount: result.cases.length,
     gpuCount: result.gpus.length,
     warningCount: result.warnings.length,
+    warnings: result.warnings,
     seedSql: buildSeedSql(result)
   };
 });

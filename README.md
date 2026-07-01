@@ -12,7 +12,7 @@ npm run intake
 npm run dev
 ```
 
-The intake command fetches the public SFF Master List tabs, normalizes cases and GPUs, and writes:
+The intake command fetches the public SFF Master List tabs, normalizes a broad generic part catalog plus the current case/GPU compatibility projections, and writes:
 
 - `.data/intake-snapshot.json`
 - `.data/intake-seed.sql`
@@ -35,11 +35,15 @@ npm run cf:deploy
 
 ## Data Model
 
-The importer reads four public Google Sheet tabs:
+The importer keeps optimized compatibility projections for:
 
 - `SFF Case <10L`
 - `SFF Case 10L-20L`
 - `SFF GPU <215mm`
 - `GPU >215mm`
 
+It also ingests the broader SFF Master List into generic `sff_parts`, `sff_part_specs`, `sff_part_dimensions`, and `sff_part_source_rows` tables so future compatibility engines can support coolers, AIOs, fans, RAM, risers, motherboards, PSUs, CPUs, chipsets, storage, radiators, and related references.
+
 Rows with unknown dimensions are imported, flagged, and shown with warnings instead of being discarded.
+
+For the v1 data direction, see [DATA_V1.md](./DATA_V1.md).

@@ -1,4 +1,4 @@
-import type { CasePart, GpuPart, IntakeResult } from "../../app/types";
+import type { CasePart, GenericPart, GpuPart, IntakeResult, PartKind } from "../../app/types";
 
 export async function readSnapshot(): Promise<IntakeResult> {
   const [{ readFile }, { resolve }] = await Promise.all([
@@ -59,6 +59,23 @@ export function rowToGpu(row: Record<string, unknown>): GpuPart {
       thicknessMm: nullableNumber(row.thickness_mm),
       pcieSlots: nullableNumber(row.pcie_slots)
     },
+    flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
+  };
+}
+
+export function rowToGenericPart(row: Record<string, unknown>): GenericPart {
+  return {
+    id: String(row.id),
+    kind: String(row.kind ?? "unknown") as PartKind,
+    sourceSheet: String(row.source_sheet),
+    rowNumber: Number(row.row_number),
+    brand: String(row.brand ?? ""),
+    name: String(row.name ?? ""),
+    displayName: String(row.display_name ?? ""),
+    status: String(row.status ?? ""),
+    specs: {},
+    dimensions: {},
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
   };

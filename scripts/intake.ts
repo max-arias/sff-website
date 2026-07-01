@@ -17,6 +17,10 @@ const sql = buildSeedSql(result);
 await writeText(snapshotPath, JSON.stringify(result, null, 2));
 await writeText(sqlPath, sql);
 
-console.log(`Fetched ${result.cases.length} cases and ${result.gpus.length} GPUs.`);
+console.log(`Fetched ${result.parts.length} generic parts, ${result.cases.length} cases, and ${result.gpus.length} GPUs.`);
+if (result.warnings.length) {
+  console.warn(`Completed with ${result.warnings.length} warning(s):`);
+  for (const warning of result.warnings) console.warn(`- ${warning}`);
+}
 console.log(`Wrote ${snapshotPath}`);
 console.log(`Wrote ${sqlPath}`);
