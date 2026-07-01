@@ -21,56 +21,39 @@ The `docyx/pc-part-dataset` catalog can be added as enrichment later, but it sho
 
 ## V1 Sheet Coverage
 
-The importer should ingest every SFF Master List tab that can describe parts, constraints, or build-relevant references:
+The importer downloads the SFF Master List as an XLSX workbook so Google Sheets cell hyperlinks are preserved. It imports every exported worksheet except the workbook index tab named `Sheets`.
 
-- `SFF Case <10L`
-- `SFF Case 10L-20L`
-- `MFF Case >20L`
-- `CPU Cooler <70mm`
-- `CPU Cooler >70mm`
-- `AIO`
-- `Slim Fan`
-- `Fans`
-- `RAM Height`
-- `PCIe Riser`
-- `SFF GPU <215mm`
-- `GPU >215mm`
-- `GPU Spec`
-- `mITX Boards`
-- `mATX Boards`
-- `PSU`
-- `CPU`
-- `Chipset`
-- `Wi-Fi`
-- `Console & Pre-Built`
-- `SSD`
-- `CPU Cooler Chart`
-- `Thermalright Coolers & Fans`
-- `Radiators`
-- `Recommended Components for SFF Cases`
-- `1151 v2 Motherboard List`
-- `AM4 Motherboard List`
-- `VLP RAM`
+Use this audit command to see the current exported tab set, row counts, and hyperlink counts:
+
+```powershell
+npm run intake:audit
+```
+
+The audit writes:
+
+```txt
+.data/sff-workbook-tabs.json
+```
+
+This avoids a stale hard-coded tab list and makes renamed or hidden sheets visible during ingest review.
 
 ## Data Shape
 
-The app keeps the current optimized `cases` and `gpus` tables for the existing MVP, but adds a generic part model for broad ingestion.
+The app stores imported catalog data in one wide table:
 
 ```txt
 sff_parts
-  one normalized record per imported row
-
-sff_part_specs
-  key/value specs copied from sheet columns
-
-sff_part_dimensions
-  parsed numeric dimension-like values
-
-sff_part_source_rows
-  raw source row JSON for every imported tab
+  one normalized record per imported part/reference row
 ```
 
-This lets us ingest broadly first, then promote heavily queried fields into category-specific tables when compatibility rules need them.
+Each row has:
+
+- A `kind` column such as `case`, `gpu`, `psu`, `cpu-cooler`, `fan`, `motherboard`, `ram`, or `reference`.
+- Common identity and provenance columns: `source_sheet`, `source_row_number`, `brand`, `name`, `display_name`, `seller_url`, and `product_url`.
+- Canonical nullable fields for fields we expect to filter/query, such as dimensions, case GPU clearance, GPU chipset/TDP/slots, cooler height, fan size, PSU wattage, motherboard form factor, and RAM height.
+- `raw_json`, `links_json`, `flags_json`, `specs_json`, and `dimensions_json` for source provenance, messy sheet leftovers, and auditability.
+
+The current case/GPU compatibility API derives its case and GPU projections from `sff_parts`; there are no separate `cases` or `gpus` database tables. This keeps D1 seed writes close to one inserted row per imported part while still allowing SQL filtering on promoted fields.
 
 ## Compatibility Model
 

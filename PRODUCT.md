@@ -51,8 +51,9 @@ This is more useful than a simple compatible/incompatible badge because SFF buil
 
 The current MVP supports:
 
-- Importing case and GPU data from the SFF Master List.
+- Importing every exported SFF Master List worksheet except the workbook index tab.
 - Normalizing dirty spreadsheet values into structured fields.
+- Preserving source hyperlinks for product, seller, and other linked sheet cells.
 - Searching across cases and GPUs.
 - Starting from either a case or a GPU.
 - Selecting incompatible combinations intentionally.
@@ -61,12 +62,7 @@ The current MVP supports:
 - Storing production data in Cloudflare D1.
 - Running locally from a generated JSON snapshot.
 
-The initial imported tabs are:
-
-- `SFF Case <10L`
-- `SFF Case 10L-20L`
-- `SFF GPU <215mm`
-- `GPU >215mm`
+Imported data is stored in one wide `sff_parts` table with a `kind` column. The current case/GPU compatibility experience is derived from that catalog.
 
 ## MVP Compatibility Rules
 
@@ -126,4 +122,3 @@ The target user values speed, clarity, and specificity over decorative 3D render
 SFF building is a community knowledge problem as much as a shopping problem. The best information is spread across spreadsheets, product pages, Discord messages, Reddit posts, build logs, and forum corrections.
 
 This website can become the layer that turns that scattered knowledge into a practical decision tool: not just “will it fit?”, but “what do we know, what is uncertain, and what should I verify before buying?”
-
