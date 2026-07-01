@@ -186,7 +186,7 @@ async function loadCatalog() {
 async function loadCatalogSuggestions() {
   const query = catalogSuggestionQuery.value;
   if (!query.q) {
-    catalogSearchData.value = { source: catalogData.value?.source ?? "snapshot", suggestions: [] };
+    catalogSearchData.value = { source: catalogData.value?.source ?? "d1", suggestions: [] };
     return;
   }
   catalogSearchData.value = await fetchJson<{ source: string; suggestions: CatalogSuggestion[] }>(
@@ -333,7 +333,7 @@ function selectCatalogSuggestion(suggestion: CatalogSuggestion) {
     <header class="topbar">
       <div class="brand-lockup">
         <strong>SFF_DATA_LOG</strong>
-        <span>{{ data?.source ?? "snapshot pending" }}</span>
+        <span>{{ data?.source ?? "d1 pending" }}</span>
       </div>
 
       <nav class="primary-nav" aria-label="Primary">

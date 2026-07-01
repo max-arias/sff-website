@@ -1,6 +1,5 @@
 import { env } from "cloudflare:workers";
-import type { CasePart, GenericPart, GpuPart } from "../types";
-import { readSnapshot, rowToCase, rowToGenericPart, rowToGpu } from "./snapshot";
+import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
 
 interface D1Result<T> {
   results?: T[];
@@ -59,88 +58,20 @@ function getDb() {
   return (env as { DB?: D1DatabaseLike }).DB;
 }
 
-function isMissingD1Schema(error: unknown) {
-  return error instanceof Error && /no such table: sff_parts/i.test(error.message);
-}
-
-async function shouldUseSnapshot(db: D1DatabaseLike | undefined) {
-  if (!db) return true;
-
-  try {
-    await db.prepare("select 1 from sff_parts limit 1").all();
-    return false;
-  } catch (caught) {
-    if (isMissingD1Schema(caught)) return true;
-    throw caught;
-  }
-}
-
-export async function loadParts(event: unknown): Promise<{ cases: CasePart[]; gpus: GpuPart[]; source: "d1" | "snapshot" }> {
-  void event;
+function requireDb() {
   const db = getDb();
-
-  const useSnapshot = await shouldUseSnapshot(db);
-
-  if (useSnapshot) {
-    const snapshot = await readSnapshot();
-    return { cases: snapshot.cases, gpus: snapshot.gpus, source: "snapshot" };
+  if (!db) {
+    throw new Error("D1 binding is unavailable. Configure the DB binding and run the local D1 database.");
   }
+  return db;
+}
 
-  const rows = await db!
+export async function loadParts(event: unknown): Promise<{ cases: CasePart[]; gpus: GpuPart[]; source: "d1" }> {
+  void event;
+  const db = requireDb();
+  const rows = await db
     .prepare("select * from sff_parts where kind in ('case', 'gpu') order by kind, display_name")
-    .all<Record<string, unknown>>()
-    .catch(async (caught) => {
-      if (!isMissingD1Schema(caught)) throw caught;
-      const snapshot = await readSnapshot();
-      return {
-        results: [
-          ...snapshot.cases.map((part) => ({
-            id: part.id,
-            kind: part.kind,
-            source_sheet: part.sourceSheet,
-            source_row_number: part.rowNumber,
-            case_seller: part.seller,
-            name: part.name,
-            case_style: part.style,
-            status: part.status,
-            case_gpu_riser: part.gpuRiser,
-            case_psu: part.psu,
-            length_mm: part.dimensions.lengthMm,
-            width_mm: part.dimensions.widthMm,
-            height_mm: part.dimensions.heightMm,
-            volume_l: part.dimensions.volumeL,
-            case_cpu_cooler_height_mm: part.dimensions.cpuCoolerHeightMm,
-            case_gpu_length_mm: part.dimensions.gpuLengthMm,
-            case_gpu_width_mm: part.dimensions.gpuWidthMm,
-            case_gpu_thickness_mm: part.dimensions.gpuThicknessMm,
-            case_pcie_slots: part.dimensions.pcieSlots,
-            case_lp_pcie_slots: part.dimensions.lpPcieSlots,
-            flags_json: JSON.stringify(part.flags),
-            raw_json: JSON.stringify(part.raw)
-          })),
-          ...snapshot.gpus.map((part) => ({
-            id: part.id,
-            kind: part.kind,
-            source_sheet: part.sourceSheet,
-            source_row_number: part.rowNumber,
-            gpu_chipset: part.chipset,
-            gpu_model: part.model,
-            gpu_brand: part.brand,
-            gpu_name: part.name,
-            gpu_low_profile: part.lowProfile ? 1 : 0,
-            gpu_watercooled: part.watercooled ? 1 : 0,
-            gpu_pcie_pins: part.pciePins,
-            gpu_tdp_w: part.tdpW,
-            length_mm: part.dimensions.lengthMm,
-            width_mm: part.dimensions.widthMm,
-            thickness_mm: part.dimensions.thicknessMm,
-            gpu_pcie_slots: part.dimensions.pcieSlots,
-            flags_json: JSON.stringify(part.flags),
-            raw_json: JSON.stringify(part.raw)
-          }))
-        ]
-      };
-    });
+    .all<Record<string, unknown>>();
   const parts = rows.results ?? [];
 
   return {
@@ -159,20 +90,171 @@ export async function findCaseAndGpu(event: unknown, caseId: string, gpuId: stri
   };
 }
 
-function summarizeParts(parts: GenericPart[]) {
-  const byKind: Record<string, number> = {};
-  const bySourceSheet: Record<string, number> = {};
+export async function searchCatalog(event: unknown, rawOptions: Partial<CatalogSearchOptions>) {
+  return searchCatalogRows(event, rawOptions);
+}
 
-  for (const part of parts) {
-    byKind[part.kind] = (byKind[part.kind] ?? 0) + 1;
-    bySourceSheet[part.sourceSheet] = (bySourceSheet[part.sourceSheet] ?? 0) + 1;
+export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQueryOptions> = {}): Promise<{
+  parts: GenericPart[];
+  source: "d1";
+  summary: {
+    total: number;
+    filteredTotal: number;
+    byKind: Record<string, number>;
+    bySourceSheet: Record<string, number>;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    pageCount: number;
+  };
+}> {
+  const options = clampCatalogOptions(rawOptions);
+  const db = requireDb();
+  const offset = (options.page - 1) * options.pageSize;
+  let parts: GenericPart[] = [];
+  let filteredTotal = 0;
+
+  if (options.search) {
+    const searchIds = (await searchCatalogRows(event, {
+      query: options.search,
+      kind: options.kind,
+      sourceSheet: options.sourceSheet,
+      limit: 1000
+    })).suggestions.map((suggestion) => suggestion.id);
+    filteredTotal = searchIds.length;
+    const pageIds = searchIds.slice(offset, offset + options.pageSize);
+
+    if (pageIds.length) {
+      const rows = await db
+        .prepare(`select * from sff_parts where id in (${pageIds.map(() => "?").join(", ")})`)
+        .bind(...pageIds)
+        .all<Record<string, unknown>>();
+      const rowsById = new Map((rows.results ?? []).map((row) => [String(row.id), rowToGenericPart(row)]));
+      parts = pageIds.map((id) => rowsById.get(id)).filter((part): part is GenericPart => Boolean(part));
+    }
+  } else {
+    const { where, values } = buildCatalogWhere(options);
+    const rows = await db
+      .prepare(`select * from sff_parts ${where} order by kind, display_name limit ? offset ?`)
+      .bind(...values, options.pageSize, offset)
+      .all<Record<string, unknown>>();
+    parts = (rows.results ?? []).map(rowToGenericPart);
+    const filteredRows = await db
+      .prepare(`select count(*) as count from sff_parts ${where}`)
+      .bind(...values)
+      .all<{ count: number }>();
+    filteredTotal = Number(filteredRows.results?.[0]?.count ?? 0);
   }
 
+  const totalRows = await db.prepare("select count(*) as count from sff_parts").all<{ count: number }>();
+  const byKindRows = await db
+    .prepare("select kind, count(*) as count from sff_parts group by kind order by count desc")
+    .all<{ kind: string; count: number }>();
+  const bySourceRows = await db
+    .prepare("select source_sheet, count(*) as count from sff_parts group by source_sheet order by count desc")
+    .all<{ source_sheet: string; count: number }>();
+  const total = Number(totalRows.results?.[0]?.count ?? 0);
+
   return {
-    total: parts.length,
-    byKind,
-    bySourceSheet
+    parts,
+    source: "d1",
+    summary: {
+      total,
+      filteredTotal,
+      byKind: Object.fromEntries((byKindRows.results ?? []).map((row) => [row.kind, Number(row.count)])),
+      bySourceSheet: Object.fromEntries((bySourceRows.results ?? []).map((row) => [row.source_sheet, Number(row.count)]))
+    },
+    pagination: {
+      page: options.page,
+      pageSize: options.pageSize,
+      pageCount: Math.max(1, Math.ceil(filteredTotal / options.pageSize))
+    }
   };
+}
+
+function rowToCase(row: Record<string, unknown>): CasePart {
+  return {
+    kind: "case",
+    id: String(row.id),
+    sourceSheet: String(row.source_sheet),
+    rowNumber: Number(row.source_row_number ?? row.row_number),
+    seller: String(row.case_seller ?? row.seller ?? row.brand ?? ""),
+    name: String(row.name ?? ""),
+    style: String(row.case_style ?? row.style ?? ""),
+    status: String(row.status ?? ""),
+    gpuRiser: String(row.case_gpu_riser ?? row.gpu_riser ?? ""),
+    psu: String(row.case_psu ?? row.psu ?? ""),
+    dimensions: {
+      lengthMm: nullableNumber(row.length_mm ?? row.case_length_mm),
+      widthMm: nullableNumber(row.width_mm ?? row.case_width_mm),
+      heightMm: nullableNumber(row.height_mm ?? row.case_height_mm),
+      volumeL: nullableNumber(row.volume_l),
+      cpuCoolerHeightMm: nullableNumber(row.case_cpu_cooler_height_mm ?? row.cpu_cooler_height_mm),
+      gpuLengthMm: nullableNumber(row.case_gpu_length_mm ?? row.gpu_length_mm),
+      gpuWidthMm: nullableNumber(row.case_gpu_width_mm ?? row.gpu_width_mm),
+      gpuThicknessMm: nullableNumber(row.case_gpu_thickness_mm ?? row.gpu_thickness_mm),
+      pcieSlots: nullableNumber(row.case_pcie_slots ?? row.pcie_slots),
+      lpPcieSlots: nullableNumber(row.case_lp_pcie_slots ?? row.lp_pcie_slots)
+    },
+    flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
+  };
+}
+
+function rowToGpu(row: Record<string, unknown>): GpuPart {
+  return {
+    kind: "gpu",
+    id: String(row.id),
+    sourceSheet: String(row.source_sheet),
+    rowNumber: Number(row.source_row_number ?? row.row_number),
+    chipset: String(row.gpu_chipset ?? row.chipset ?? ""),
+    model: String(row.gpu_model ?? row.model ?? ""),
+    brand: String(row.gpu_brand ?? row.brand ?? ""),
+    name: String(row.gpu_name ?? row.name ?? ""),
+    lowProfile: booleanish(row.gpu_low_profile ?? row.low_profile),
+    watercooled: booleanish(row.gpu_watercooled ?? row.watercooled),
+    pciePins: String(row.gpu_pcie_pins ?? row.pcie_pins ?? ""),
+    tdpW: nullableNumber(row.gpu_tdp_w ?? row.tdp_w),
+    dimensions: {
+      lengthMm: nullableNumber(row.length_mm),
+      widthMm: nullableNumber(row.width_mm),
+      thicknessMm: nullableNumber(row.thickness_mm),
+      pcieSlots: nullableNumber(row.gpu_pcie_slots ?? row.pcie_slots)
+    },
+    flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
+  };
+}
+
+function rowToGenericPart(row: Record<string, unknown>): GenericPart {
+  return {
+    id: String(row.id),
+    kind: String(row.kind ?? "unknown") as PartKind,
+    sourceSheet: String(row.source_sheet),
+    rowNumber: Number(row.source_row_number ?? row.row_number),
+    brand: String(row.brand ?? ""),
+    name: String(row.name ?? ""),
+    displayName: String(row.display_name ?? ""),
+    status: String(row.status ?? ""),
+    sellerUrl: String(row.seller_url ?? ""),
+    productUrl: String(row.product_url ?? ""),
+    specs: JSON.parse(String(row.specs_json ?? "{}")) as Record<string, string>,
+    dimensions: JSON.parse(String(row.dimensions_json ?? "{}")) as Record<string, number>,
+    flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>,
+    links: JSON.parse(String(row.links_json ?? "{}")) as Record<string, string>
+  };
+}
+
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function booleanish(value: unknown) {
+  return value === true || value === 1 || value === "1";
 }
 
 function clampCatalogOptions(options: Partial<CatalogQueryOptions> = {}): CatalogQueryOptions {
@@ -183,23 +265,6 @@ function clampCatalogOptions(options: Partial<CatalogQueryOptions> = {}): Catalo
     sourceSheet: options.sourceSheet && options.sourceSheet !== "all" ? options.sourceSheet : undefined,
     search: options.search?.trim() || undefined
   };
-}
-
-function filterSnapshotParts(parts: GenericPart[], options: CatalogQueryOptions) {
-  const search = options.search?.toLowerCase();
-
-  return parts.filter((part) => {
-    if (options.kind && part.kind !== options.kind) return false;
-    if (options.sourceSheet && part.sourceSheet !== options.sourceSheet) return false;
-    if (!search) return true;
-
-    return [part.displayName, part.brand, part.name, part.kind, part.sourceSheet, part.status]
-      .some((value) => value.toLowerCase().includes(search));
-  });
-}
-
-function partSearchText(part: Pick<GenericPart, "displayName" | "brand" | "name" | "kind" | "sourceSheet" | "status">) {
-  return [part.displayName, part.brand, part.name, part.kind, part.sourceSheet, part.status].join(" ");
 }
 
 function rowSearchText(row: CatalogSearchRow) {
@@ -297,18 +362,6 @@ function sortSearchMatches<T>(items: T[], query: string, textFor: (item: T) => s
   return (limit ? ranked.slice(0, limit) : ranked).map((entry) => ({ ...entry.item, score: entry.score }));
 }
 
-function snapshotSuggestion(part: GenericPart & { score: number }): CatalogSearchSuggestion {
-  return {
-    id: part.id,
-    kind: part.kind,
-    displayName: part.displayName,
-    sourceSheet: part.sourceSheet,
-    rowNumber: part.rowNumber,
-    score: part.score,
-    match: partSearchText(part)
-  };
-}
-
 function rowSuggestion(row: CatalogSearchRow & { score: number }): CatalogSearchSuggestion {
   return {
     id: String(row.id),
@@ -370,40 +423,24 @@ function buildCatalogFilterWhere(options: Pick<CatalogQueryOptions, "kind" | "so
 }
 
 async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSearchOptions>) {
+  void event;
   const options = {
     query: rawOptions.query?.trim() ?? "",
     limit: Math.max(1, Math.min(1000, Math.floor(rawOptions.limit ?? 25))),
     kind: rawOptions.kind && rawOptions.kind !== "all" ? rawOptions.kind : undefined,
     sourceSheet: rawOptions.sourceSheet && rawOptions.sourceSheet !== "all" ? rawOptions.sourceSheet : undefined
   };
-  void event;
-  const db = getDb();
-
-  const useSnapshot = await shouldUseSnapshot(db);
+  const db = requireDb();
 
   if (!options.query) {
     return {
-      source: useSnapshot ? "snapshot" as const : "d1" as const,
+      source: "d1" as const,
       suggestions: [] as CatalogSearchSuggestion[]
     };
   }
 
-  if (useSnapshot) {
-    const snapshot = await readSnapshot();
-    const filtered = snapshot.parts.filter((part) => {
-      if (options.kind && part.kind !== options.kind) return false;
-      if (options.sourceSheet && part.sourceSheet !== options.sourceSheet) return false;
-      return true;
-    });
-    const suggestions = sortSearchMatches(filtered, options.query, partSearchText, options.limit).map(snapshotSuggestion);
-    return {
-      source: "snapshot" as const,
-      suggestions
-    };
-  }
-
   const { where, values } = buildCatalogFilterWhere(options);
-  const rows = await db!
+  const rows = await db
     .prepare(
       `select id, kind, source_sheet, source_row_number, brand, name, display_name, status, gpu_chipset, gpu_model, case_seller, case_style from sff_parts ${where}`
     )
@@ -414,118 +451,5 @@ async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSear
   return {
     source: "d1" as const,
     suggestions
-  };
-}
-
-export async function searchCatalog(event: unknown, rawOptions: Partial<CatalogSearchOptions>) {
-  return searchCatalogRows(event, rawOptions);
-}
-
-export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQueryOptions> = {}): Promise<{
-  parts: GenericPart[];
-  source: "d1" | "snapshot";
-  summary: {
-    total: number;
-    filteredTotal: number;
-    byKind: Record<string, number>;
-    bySourceSheet: Record<string, number>;
-  };
-  pagination: {
-    page: number;
-    pageSize: number;
-    pageCount: number;
-  };
-}> {
-  const options = clampCatalogOptions(rawOptions);
-  const db = getDb();
-
-  const useSnapshot = await shouldUseSnapshot(db);
-
-  if (useSnapshot) {
-    const snapshot = await readSnapshot();
-    const searched = options.search
-      ? sortSearchMatches(
-          snapshot.parts.filter((part) => {
-            if (options.kind && part.kind !== options.kind) return false;
-            if (options.sourceSheet && part.sourceSheet !== options.sourceSheet) return false;
-            return true;
-          }),
-          options.search,
-          partSearchText
-        )
-      : undefined;
-    const filtered = searched ?? filterSnapshotParts(snapshot.parts, options);
-    const offset = (options.page - 1) * options.pageSize;
-
-    return {
-      parts: filtered.slice(offset, offset + options.pageSize),
-      source: "snapshot",
-      summary: {
-        ...summarizeParts(snapshot.parts),
-        filteredTotal: filtered.length
-      },
-      pagination: {
-        page: options.page,
-        pageSize: options.pageSize,
-        pageCount: Math.max(1, Math.ceil(filtered.length / options.pageSize))
-      }
-    };
-  }
-
-  const offset = (options.page - 1) * options.pageSize;
-  let parts: GenericPart[] = [];
-  let filteredTotal = 0;
-
-  if (options.search) {
-    const searchIds = (await searchCatalogRows(event, { query: options.search, kind: options.kind, sourceSheet: options.sourceSheet, limit: 1000 }))
-      .suggestions.map((suggestion) => suggestion.id);
-    filteredTotal = searchIds.length;
-    const pageIds = searchIds.slice(offset, offset + options.pageSize);
-
-    if (pageIds.length) {
-      const rows = await db!
-        .prepare(`select * from sff_parts where id in (${pageIds.map(() => "?").join(", ")})`)
-        .bind(...pageIds)
-        .all<Record<string, unknown>>();
-      const rowsById = new Map((rows.results ?? []).map((row) => [String(row.id), rowToGenericPart(row)]));
-      parts = pageIds.map((id) => rowsById.get(id)).filter((part): part is GenericPart => Boolean(part));
-    }
-  } else {
-    const { where, values } = buildCatalogWhere(options);
-    const rows = await db!
-      .prepare(`select * from sff_parts ${where} order by kind, display_name limit ? offset ?`)
-      .bind(...values, options.pageSize, offset)
-      .all<Record<string, unknown>>();
-    parts = (rows.results ?? []).map(rowToGenericPart);
-    const filteredRows = await db!
-      .prepare(`select count(*) as count from sff_parts ${where}`)
-      .bind(...values)
-      .all<{ count: number }>();
-    filteredTotal = Number(filteredRows.results?.[0]?.count ?? 0);
-  }
-
-  const totalRows = await db!.prepare("select count(*) as count from sff_parts").all<{ count: number }>();
-  const byKindRows = await db!
-    .prepare("select kind, count(*) as count from sff_parts group by kind order by count desc")
-    .all<{ kind: string; count: number }>();
-  const bySourceRows = await db!
-    .prepare("select source_sheet, count(*) as count from sff_parts group by source_sheet order by count desc")
-    .all<{ source_sheet: string; count: number }>();
-  const total = Number(totalRows.results?.[0]?.count ?? 0);
-
-  return {
-    parts,
-    source: "d1",
-    summary: {
-      total,
-      filteredTotal,
-      byKind: Object.fromEntries((byKindRows.results ?? []).map((row) => [row.kind, Number(row.count)])),
-      bySourceSheet: Object.fromEntries((bySourceRows.results ?? []).map((row) => [row.source_sheet, Number(row.count)]))
-    },
-    pagination: {
-      page: options.page,
-      pageSize: options.pageSize,
-      pageCount: Math.max(1, Math.ceil(filteredTotal / options.pageSize))
-    }
   };
 }

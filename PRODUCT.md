@@ -60,7 +60,7 @@ The current MVP supports:
 - Showing exact fit issues and warning messages.
 - Displaying clearance values for length, width, thickness, and PCIe slots.
 - Storing production data in Cloudflare D1.
-- Running locally from a generated JSON snapshot.
+- Running locally against a seeded Cloudflare D1 database.
 
 Imported data is stored in one wide `sff_parts` table with a `kind` column. The current case/GPU compatibility experience is derived from that catalog.
 
