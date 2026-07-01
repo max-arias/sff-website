@@ -23,6 +23,7 @@ export interface RawSheetRow {
   sourceSheet: string;
   rowNumber: number;
   values: Record<string, string>;
+  links: Record<string, string>;
 }
 
 export interface GenericPart {
@@ -34,10 +35,13 @@ export interface GenericPart {
   name: string;
   displayName: string;
   status: string;
+  sellerUrl: string;
+  productUrl: string;
   specs: Record<string, string>;
   dimensions: Record<string, number>;
   flags: string[];
   raw: Record<string, string>;
+  links: Record<string, string>;
 }
 
 export interface CasePart {

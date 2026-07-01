@@ -80,7 +80,7 @@ function rawInsert(runId: string, row: RawSheetRow) {
 }
 
 function genericPartInsert(runId: string, part: GenericPart) {
-  return `insert into sff_parts (id, import_run_id, kind, source_sheet, row_number, brand, name, display_name, status, flags_json, raw_json) values (${[
+  return `insert into sff_parts (id, import_run_id, kind, source_sheet, row_number, brand, name, display_name, status, seller_url, product_url, flags_json, raw_json, links_json) values (${[
     escapeSql(part.id),
     escapeSql(runId),
     escapeSql(part.kind),
@@ -90,8 +90,11 @@ function genericPartInsert(runId: string, part: GenericPart) {
     escapeSql(part.name),
     escapeSql(part.displayName),
     escapeSql(part.status),
+    escapeSql(part.sellerUrl),
+    escapeSql(part.productUrl),
     json(part.flags),
-    json(part.raw)
+    json(part.raw),
+    json(part.links)
   ].join(", ")});`;
 }
 
@@ -117,13 +120,14 @@ function genericDimensionInsert(part: GenericPart, key: string, value: number) {
 
 function genericSourceRowInsert(runId: string, row: RawSheetRow, partKind: string, index: number) {
   const id = `${runId}-${partKind}-${index + 1}-${row.sourceSheet}-${row.rowNumber}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return `insert into sff_part_source_rows (id, import_run_id, part_kind, source_sheet, row_number, row_json) values (${[
+  return `insert into sff_part_source_rows (id, import_run_id, part_kind, source_sheet, row_number, row_json, links_json) values (${[
     escapeSql(id),
     escapeSql(runId),
     escapeSql(partKind),
     escapeSql(row.sourceSheet),
     escapeSql(row.rowNumber),
-    json(row.values)
+    json(row.values),
+    json(row.links)
   ].join(", ")});`;
 }
 

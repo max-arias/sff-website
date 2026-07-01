@@ -23,11 +23,12 @@
     "data:prod": "npm run intake && npm run db:migrate:prod && npm run db:seed:prod",
     "data:preview": "npm run intake && npm run db:migrate:preview && npm run db:seed:preview",
     "intake": "tsx scripts/intake.ts",
+    "intake:audit": "tsx scripts/audit-sff-workbook.ts",
     "intake:sql": "tsx scripts/intake.ts --sql-only"
   },
   "dependencies": {
     "@nuxt/ui": "^4.9.0",
-    "csv-parse": "^7.0.0",
+    "exceljs": "^4.4.0",
     "fuse.js": "^7.4.2",
     "nuxt": "^4.4.8"
   },

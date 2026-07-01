@@ -1,4 +1,4 @@
-import { parse } from "csv-parse/sync";
+import ExcelJS from "exceljs";
 import type { CasePart, GenericPart, GpuPart, IntakeResult, PartKind, RawSheetRow } from "../types";
 
 const SHEET_ID = "1AddRvGWJ_f4B6UC7_IftDiVudVc8CJ8sxLUqlxVsCz4";
@@ -8,39 +8,10 @@ export const SFF_SHEETS = {
   gpus: ["SFF GPU <215mm", "GPU >215mm"]
 } as const;
 
-export const SFF_V1_SHEETS = [
-  "SFF Case <10L",
-  "SFF Case 10L-20L",
-  "MFF Case >20L",
-  "CPU Cooler <70mm",
-  "CPU Cooler >70mm",
-  "AIO",
-  "Slim Fan",
-  "Fans",
-  "RAM Height",
-  "PCIe Riser",
-  "SFF GPU <215mm",
-  "GPU >215mm",
-  "GPU Spec",
-  "mITX Boards",
-  "mATX Boards",
-  "PSU",
-  "CPU",
-  "Chipset",
-  "Wi-Fi",
-  "Console & Pre-Built",
-  "SSD",
-  "CPU Cooler Chart",
-  "Thermalright Coolers & Fans",
-  "Radiators",
-  "Recommended Components for SFF Cases",
-  "1151 v2 Motherboard List",
-  "AM4 Motherboard List",
-  "VLP RAM"
-] as const;
+export const SFF_INDEX_SHEET = "Sheets";
 
-function sheetCsvUrl(sheetName: string) {
-  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+function sheetXlsxUrl() {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=xlsx`;
 }
 
 function stableId(parts: Array<string | number | null | undefined>) {
@@ -108,12 +79,21 @@ function partKindFromSheet(sheetName: string): PartKind {
   if (name.includes("ssd")) return "storage";
   if (name.includes("radiator")) return "radiator";
   if (name.includes("console") || name.includes("pre-built")) return "prebuilt";
+  if (name.includes("taobao")) return "reference";
   return "unknown";
 }
 
 function firstCell(values: Record<string, string>, keys: string[]) {
   for (const key of keys) {
     const value = cell(values, key);
+    if (value) return value;
+  }
+  return "";
+}
+
+function firstLink(links: Record<string, string>, keys: string[]) {
+  for (const key of keys) {
+    const value = links[key]?.trim();
     if (value) return value;
   }
   return "";
@@ -134,9 +114,10 @@ function normalizeSpecKey(key: string) {
 
 function normalizeGenericPart(raw: RawSheetRow): GenericPart {
   const values = raw.values;
+  const links = raw.links;
   const kind = partKindFromSheet(raw.sourceSheet);
-  const brand = firstCell(values, ["Brand", "Seller", "Manufacturer", "Make", "Company"]);
-  const name = firstCell(values, [
+  const brandKeys = ["Brand", "Seller", "Manufacturer", "Make", "Company"];
+  const nameKeys = [
     "Name",
     "Model",
     "Case",
@@ -150,10 +131,14 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
     "GPU",
     "Chipset",
     "SSD"
-  ]);
+  ];
+  const brand = firstCell(values, brandKeys);
+  const name = firstCell(values, nameKeys);
   const fallbackName = firstNonEmptyValue(values);
   const displayName = [brand, name || fallbackName].filter(Boolean).join(" ").trim();
   const status = firstCell(values, ["Status", "Availability"]);
+  const sellerUrl = firstLink(links, brandKeys);
+  const productUrl = firstLink(links, nameKeys);
   const specs = Object.fromEntries(
     Object.entries(values)
       .map(([key, value]) => [normalizeSpecKey(key), value.trim()] as const)
@@ -183,10 +168,13 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
     name: name || fallbackName,
     displayName,
     status,
+    sellerUrl,
+    productUrl,
     specs,
     dimensions,
     flags,
-    raw: values
+    raw: values,
+    links
   };
 }
 
@@ -305,40 +293,86 @@ function normalizeGpu(raw: RawSheetRow): GpuPart {
   };
 }
 
-async function fetchSheet(sheetName: string): Promise<RawSheetRow[]> {
-  const response = await fetch(sheetCsvUrl(sheetName));
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${sheetName}: ${response.status} ${response.statusText}`);
+function cellText(cell: ExcelJS.Cell) {
+  const value = cell.value;
+  if (value && typeof value === "object") {
+    if ("text" in value && typeof value.text === "string") return value.text.trim();
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text ?? "").join("").trim();
+    }
+    if ("result" in value && value.result !== undefined && value.result !== null) {
+      return String(value.result).trim();
+    }
+  }
+  return String(cell.text ?? "").trim();
+}
+
+function hyperlinkFromFormula(formula: string) {
+  const match = formula.match(/HYPERLINK\(\s*"([^"]+)"/i);
+  return match?.[1] ?? "";
+}
+
+function cellLink(cell: ExcelJS.Cell) {
+  if (cell.hyperlink) return cell.hyperlink;
+  const value = cell.value;
+  if (value && typeof value === "object") {
+    if ("hyperlink" in value && typeof value.hyperlink === "string") return value.hyperlink;
+    if ("formula" in value && typeof value.formula === "string") return hyperlinkFromFormula(value.formula);
+    if ("richText" in value && Array.isArray(value.richText)) {
+      const linkedPart = value.richText.find((part) => "hyperlink" in part && typeof part.hyperlink === "string");
+      if (linkedPart && "hyperlink" in linkedPart && typeof linkedPart.hyperlink === "string") return linkedPart.hyperlink;
+    }
+  }
+  return "";
+}
+
+function rowsFromWorksheet(sheetName: string, worksheet: ExcelJS.Worksheet): RawSheetRow[] {
+  const headerRow = worksheet.getRow(1);
+  const headers = Array.from({ length: worksheet.columnCount }, (_, index) => cellText(headerRow.getCell(index + 1)));
+  const rows: RawSheetRow[] = [];
+
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const values: Record<string, string> = {};
+    const links: Record<string, string> = {};
+
+    headers.forEach((header, index) => {
+      if (!header) return;
+      const cell = row.getCell(index + 1);
+      const value = cellText(cell);
+      const link = cellLink(cell);
+      values[header] = value;
+      if (link) links[header] = link;
+    });
+
+    if (Object.values(values).some((value) => value.trim())) {
+      rows.push({ sourceSheet: sheetName, rowNumber, values, links });
+    }
   }
 
-  const csv = await response.text();
-  const records = parse(csv, {
-    bom: true,
-    columns: true,
-    relax_column_count: true,
-    skip_empty_lines: true
-  }) as Record<string, string>[];
+  return rows;
+}
 
-  return records.map((values, index) => ({
-    sourceSheet: sheetName,
-    rowNumber: index + 2,
-    values
-  }));
+async function fetchWorkbookRows(warnings: string[]): Promise<RawSheetRow[]> {
+  const response = await fetch(sheetXlsxUrl());
+  if (!response.ok) {
+    throw new Error(`Failed to fetch SFF workbook: ${response.status} ${response.statusText}`);
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await response.arrayBuffer());
+
+  return workbook.worksheets
+    .filter((worksheet) => worksheet.name !== SFF_INDEX_SHEET)
+    .flatMap((worksheet) => rowsFromWorksheet(worksheet.name, worksheet));
 }
 
 export async function fetchAndNormalizeAll(): Promise<IntakeResult> {
   const warnings: string[] = [];
-  const allSheetRows = await Promise.all(
-    SFF_V1_SHEETS.map(async (sheetName) => {
-      try {
-        return await fetchSheet(sheetName);
-      } catch (error) {
-        warnings.push(`Failed to fetch ${sheetName}: ${error instanceof Error ? error.message : String(error)}`);
-        return [];
-      }
-    })
-  );
-  const rawRows = allSheetRows.flat();
+  const rawRows = await fetchWorkbookRows(warnings).catch((error) => {
+    warnings.push(error instanceof Error ? error.message : String(error));
+    return [];
+  });
   const rawCaseRows = rawRows.filter((row) => (SFF_SHEETS.cases as readonly string[]).includes(row.sourceSheet));
   const rawGpuRows = rawRows.filter((row) => (SFF_SHEETS.gpus as readonly string[]).includes(row.sourceSheet));
 

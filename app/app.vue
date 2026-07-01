@@ -343,6 +343,10 @@ function setCatalogKind(kind: string) {
               <span>
                 <strong>{{ part.displayName }}</strong>
                 <small v-if="part.status">{{ part.status }}</small>
+                <span v-if="part.productUrl || part.sellerUrl" class="part-links">
+                  <a v-if="part.productUrl" :href="part.productUrl" target="_blank" rel="noopener noreferrer">Product</a>
+                  <a v-if="part.sellerUrl" :href="part.sellerUrl" target="_blank" rel="noopener noreferrer">Seller</a>
+                </span>
               </span>
               <span>{{ part.kind }}</span>
               <span>{{ part.sourceSheet }} #{{ part.rowNumber }}</span>

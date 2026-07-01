@@ -74,10 +74,13 @@ export function rowToGenericPart(row: Record<string, unknown>): GenericPart {
     name: String(row.name ?? ""),
     displayName: String(row.display_name ?? ""),
     status: String(row.status ?? ""),
+    sellerUrl: String(row.seller_url ?? ""),
+    productUrl: String(row.product_url ?? ""),
     specs: {},
     dimensions: {},
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
-    raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
+    raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>,
+    links: JSON.parse(String(row.links_json ?? "{}")) as Record<string, string>
   };
 }
 

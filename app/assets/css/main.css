@@ -337,6 +337,26 @@ input {
   color: var(--muted);
 }
 
+.part-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.part-links a {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  padding: 3px 6px;
+  text-decoration: none;
+}
+
+.part-links a:hover {
+  border-color: var(--ink);
+  background: oklch(96% 0.008 260);
+}
+
 .verdict {
   display: inline-flex;
   align-items: center;
