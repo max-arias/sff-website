@@ -1,0 +1,32 @@
+{
+  "name": "sff-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "typecheck": "nuxt typecheck",
+    "preview": "nuxt preview",
+    "cf:build": "nuxt build --preset=cloudflare_module",
+    "cf:dev": "wrangler dev .output/server/index.mjs --assets .output/public",
+    "cf:deploy": "npm run cf:build && wrangler deploy .output/server/index.mjs --assets .output/public",
+    "db:migrate:local": "wrangler d1 migrations apply sff-builder --local",
+    "db:migrate:remote": "wrangler d1 migrations apply sff-builder --remote",
+    "intake": "tsx scripts/intake.ts",
+    "intake:sql": "tsx scripts/intake.ts --sql-only"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.9.0",
+    "csv-parse": "^7.0.0",
+    "fuse.js": "^7.4.2",
+    "nuxt": "^4.4.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260627.0",
+    "@types/node": "^24.10.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.1.5",
+    "wrangler": "^4.53.0"
+  }
+}
