@@ -147,7 +147,7 @@ const protocol = [
               <p class="micro-label">Quick search</p>
             </div>
 
-            <div class="mt-6">
+            <div class="mt-6" data-autocomplete-root>
               <label class="relative block">
                 <span class="sr-only">Search components</span>
                 <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -155,11 +155,17 @@ const protocol = [
                   <path d="M16 16L21 21"></path>
                 </svg>
                 <input
+                  data-autocomplete-input
                   type="text"
                   placeholder="Search case, GPU, or CPU cooler..."
                   class="h-14 w-full border border-line bg-canvas-2/70 pl-12 pr-4 text-base text-ink outline-none transition placeholder:text-ink-faint focus:border-accent"
+                  autocomplete="off"
                 />
               </label>
+              <div data-autocomplete-panel class="relative z-30 mt-2 hidden border border-line bg-panel shadow-card">
+                <div data-autocomplete-status class="px-4 py-3 text-sm text-ink-soft"></div>
+                <div data-autocomplete-results class="grid"></div>
+              </div>
             </div>
 
             <div class="mt-5 flex flex-wrap gap-2">
@@ -175,7 +181,7 @@ const protocol = [
 
           <div class="grid gap-grid-gap lg:grid-cols-2">
             {launchPaths.map((path, index) => (
-              <a href="#method" class="group tech-frame grid min-h-[23rem] gap-8 p-6 transition duration-200 hover:border-line-strong hover:bg-panel-2 md:p-8">
+              <section class="group tech-frame grid min-h-[23rem] gap-8 p-6 transition duration-200 hover:border-line-strong hover:bg-panel-2 md:p-8">
                 <div class="grid gap-5">
                   <div class="flex h-12 w-12 items-center justify-center bg-panel-3 text-accent">
                     {
@@ -200,18 +206,24 @@ const protocol = [
                     <p class="mt-3 max-w-[48ch] text-base leading-7 text-ink-soft">{path.copy}</p>
                   </div>
 
-                  <label class="relative block">
+                  <div class="relative block" data-autocomplete-root data-kind={index === 0 ? "case" : "gpu"}>
                     <span class="sr-only">{path.title}</span>
                     <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" fill="none" stroke="currentColor" stroke-width="1.75">
                       <circle cx="11" cy="11" r="6.5"></circle>
                       <path d="M16 16L21 21"></path>
                     </svg>
                     <input
+                      data-autocomplete-input
                       type="text"
                       placeholder={index === 0 ? "Search cases..." : "Search GPUs..."}
                       class="h-11 w-full border border-line bg-canvas-2/70 pl-10 pr-4 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-accent"
+                      autocomplete="off"
                     />
-                  </label>
+                    <div data-autocomplete-panel class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 hidden border border-line bg-panel shadow-card">
+                      <div data-autocomplete-status class="px-4 py-3 text-sm text-ink-soft"></div>
+                      <div data-autocomplete-results class="grid"></div>
+                    </div>
+                  </div>
 
                   <div class="flex flex-wrap gap-2">
                     {path.samples.map((sample) => (
@@ -227,7 +239,7 @@ const protocol = [
                     <path d="M13 6l6 6-6 6"></path>
                   </svg>
                 </div>
-              </a>
+              </section>
             ))}
           </div>
         </div>
@@ -356,6 +368,106 @@ const protocol = [
     toggle?.addEventListener("click", () => {
       const nextTheme = root.dataset.theme === "light" ? "dark" : "light";
       applyTheme(nextTheme);
+    });
+
+    const autocompleteRoots = document.querySelectorAll("[data-autocomplete-root]");
+
+    autocompleteRoots.forEach((autocompleteRoot) => {
+      const input = autocompleteRoot.querySelector("[data-autocomplete-input]");
+      const panel = autocompleteRoot.querySelector("[data-autocomplete-panel]");
+      const status = autocompleteRoot.querySelector("[data-autocomplete-status]");
+      const results = autocompleteRoot.querySelector("[data-autocomplete-results]");
+      const kind = autocompleteRoot.dataset.kind;
+
+      if (!input || !panel || !status || !results) return;
+
+      let debounceTimer;
+      let activeRequest = 0;
+
+      const closePanel = () => {
+        panel.classList.add("hidden");
+      };
+
+      const openPanel = () => {
+        panel.classList.remove("hidden");
+      };
+
+      const renderState = (message) => {
+        status.textContent = message;
+        results.replaceChildren();
+      };
+
+      const renderSuggestions = (suggestions) => {
+        results.replaceChildren();
+
+        suggestions.forEach((suggestion) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "grid gap-1 border-t border-line px-4 py-3 text-left transition first:border-t-0 hover:bg-panel-2";
+          button.innerHTML = `
+            <strong class="text-sm font-semibold text-ink">${suggestion.displayName}</strong>
+            <span class="font-mono text-[0.7rem] uppercase tracking-[0.16em] text-ink-faint">${suggestion.kind} / ${suggestion.sourceSheet} #${suggestion.rowNumber}</span>
+          `;
+          button.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            input.value = suggestion.displayName;
+            closePanel();
+          });
+          results.append(button);
+        });
+      };
+
+      const fetchSuggestions = async () => {
+        const query = input.value.trim();
+        if (query.length < 3) {
+          closePanel();
+          return;
+        }
+
+        const requestId = ++activeRequest;
+        openPanel();
+        renderState("Searching components...");
+
+        const params = new URLSearchParams({ q: query, limit: "8" });
+        if (kind) params.set("kind", kind);
+
+        try {
+          const response = await fetch(`/api/catalog/search?${params.toString()}`);
+          if (!response.ok) {
+            throw new Error(`${response.status} ${response.statusText}`);
+          }
+
+          const payload = await response.json();
+          if (requestId !== activeRequest) return;
+
+          const suggestions = payload.suggestions ?? [];
+          if (!suggestions.length) {
+            renderState("No matching components found.");
+            return;
+          }
+
+          status.textContent = `${suggestions.length} component${suggestions.length === 1 ? "" : "s"} found`;
+          renderSuggestions(suggestions);
+        } catch (error) {
+          if (requestId !== activeRequest) return;
+          renderState("Search is unavailable right now.");
+        }
+      };
+
+      input.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(fetchSuggestions, 180);
+      });
+
+      input.addEventListener("focus", () => {
+        if (input.value.trim().length >= 3) {
+          void fetchSuggestions();
+        }
+      });
+
+      input.addEventListener("blur", () => {
+        window.setTimeout(closePanel, 120);
+      });
     });
   </script>
 </BaseLayout>
