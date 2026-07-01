@@ -39,14 +39,14 @@ export async function loadParts(event: unknown): Promise<{ cases: CasePart[]; gp
     return { cases: snapshot.cases, gpus: snapshot.gpus, source: "snapshot" };
   }
 
-  const [caseRows, gpuRows] = await Promise.all([
-    db.prepare("select * from cases order by seller, name").all<Record<string, unknown>>(),
-    db.prepare("select * from gpus order by chipset, model, brand, name").all<Record<string, unknown>>()
-  ]);
+  const rows = await db
+    .prepare("select * from sff_parts where kind in ('case', 'gpu') order by kind, display_name")
+    .all<Record<string, unknown>>();
+  const parts = rows.results ?? [];
 
   return {
-    cases: (caseRows.results ?? []).map(rowToCase),
-    gpus: (gpuRows.results ?? []).map(rowToGpu),
+    cases: parts.filter((row) => row.kind === "case").map(rowToCase),
+    gpus: parts.filter((row) => row.kind === "gpu").map(rowToGpu),
     source: "d1"
   };
 }

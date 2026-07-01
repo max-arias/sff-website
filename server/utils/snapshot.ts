@@ -15,24 +15,24 @@ export function rowToCase(row: Record<string, unknown>): CasePart {
     kind: "case",
     id: String(row.id),
     sourceSheet: String(row.source_sheet),
-    rowNumber: Number(row.row_number),
-    seller: String(row.seller ?? ""),
+    rowNumber: Number(row.source_row_number ?? row.row_number),
+    seller: String(row.case_seller ?? row.seller ?? row.brand ?? ""),
     name: String(row.name ?? ""),
-    style: String(row.style ?? ""),
+    style: String(row.case_style ?? row.style ?? ""),
     status: String(row.status ?? ""),
-    gpuRiser: String(row.gpu_riser ?? ""),
-    psu: String(row.psu ?? ""),
+    gpuRiser: String(row.case_gpu_riser ?? row.gpu_riser ?? ""),
+    psu: String(row.case_psu ?? row.psu ?? ""),
     dimensions: {
-      lengthMm: nullableNumber(row.case_length_mm),
-      widthMm: nullableNumber(row.case_width_mm),
-      heightMm: nullableNumber(row.case_height_mm),
+      lengthMm: nullableNumber(row.length_mm ?? row.case_length_mm),
+      widthMm: nullableNumber(row.width_mm ?? row.case_width_mm),
+      heightMm: nullableNumber(row.height_mm ?? row.case_height_mm),
       volumeL: nullableNumber(row.volume_l),
-      cpuCoolerHeightMm: nullableNumber(row.cpu_cooler_height_mm),
-      gpuLengthMm: nullableNumber(row.gpu_length_mm),
-      gpuWidthMm: nullableNumber(row.gpu_width_mm),
-      gpuThicknessMm: nullableNumber(row.gpu_thickness_mm),
-      pcieSlots: nullableNumber(row.pcie_slots),
-      lpPcieSlots: nullableNumber(row.lp_pcie_slots)
+      cpuCoolerHeightMm: nullableNumber(row.case_cpu_cooler_height_mm ?? row.cpu_cooler_height_mm),
+      gpuLengthMm: nullableNumber(row.case_gpu_length_mm ?? row.gpu_length_mm),
+      gpuWidthMm: nullableNumber(row.case_gpu_width_mm ?? row.gpu_width_mm),
+      gpuThicknessMm: nullableNumber(row.case_gpu_thickness_mm ?? row.gpu_thickness_mm),
+      pcieSlots: nullableNumber(row.case_pcie_slots ?? row.pcie_slots),
+      lpPcieSlots: nullableNumber(row.case_lp_pcie_slots ?? row.lp_pcie_slots)
     },
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
@@ -44,20 +44,20 @@ export function rowToGpu(row: Record<string, unknown>): GpuPart {
     kind: "gpu",
     id: String(row.id),
     sourceSheet: String(row.source_sheet),
-    rowNumber: Number(row.row_number),
-    chipset: String(row.chipset ?? ""),
-    model: String(row.model ?? ""),
-    brand: String(row.brand ?? ""),
-    name: String(row.name ?? ""),
-    lowProfile: Boolean(row.low_profile),
-    watercooled: Boolean(row.watercooled),
-    pciePins: String(row.pcie_pins ?? ""),
-    tdpW: nullableNumber(row.tdp_w),
+    rowNumber: Number(row.source_row_number ?? row.row_number),
+    chipset: String(row.gpu_chipset ?? row.chipset ?? ""),
+    model: String(row.gpu_model ?? row.model ?? ""),
+    brand: String(row.gpu_brand ?? row.brand ?? ""),
+    name: String(row.gpu_name ?? row.name ?? ""),
+    lowProfile: booleanish(row.gpu_low_profile ?? row.low_profile),
+    watercooled: booleanish(row.gpu_watercooled ?? row.watercooled),
+    pciePins: String(row.gpu_pcie_pins ?? row.pcie_pins ?? ""),
+    tdpW: nullableNumber(row.gpu_tdp_w ?? row.tdp_w),
     dimensions: {
       lengthMm: nullableNumber(row.length_mm),
       widthMm: nullableNumber(row.width_mm),
       thicknessMm: nullableNumber(row.thickness_mm),
-      pcieSlots: nullableNumber(row.pcie_slots)
+      pcieSlots: nullableNumber(row.gpu_pcie_slots ?? row.pcie_slots)
     },
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
@@ -69,15 +69,15 @@ export function rowToGenericPart(row: Record<string, unknown>): GenericPart {
     id: String(row.id),
     kind: String(row.kind ?? "unknown") as PartKind,
     sourceSheet: String(row.source_sheet),
-    rowNumber: Number(row.row_number),
+    rowNumber: Number(row.source_row_number ?? row.row_number),
     brand: String(row.brand ?? ""),
     name: String(row.name ?? ""),
     displayName: String(row.display_name ?? ""),
     status: String(row.status ?? ""),
     sellerUrl: String(row.seller_url ?? ""),
     productUrl: String(row.product_url ?? ""),
-    specs: {},
-    dimensions: {},
+    specs: JSON.parse(String(row.specs_json ?? "{}")) as Record<string, string>,
+    dimensions: JSON.parse(String(row.dimensions_json ?? "{}")) as Record<string, number>,
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>,
     links: JSON.parse(String(row.links_json ?? "{}")) as Record<string, string>
@@ -88,4 +88,8 @@ function nullableNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function booleanish(value: unknown) {
+  return value === true || value === 1 || value === "1";
 }
