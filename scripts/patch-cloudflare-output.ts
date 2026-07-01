@@ -23,7 +23,7 @@ config.d1_databases = [
   {
     binding: "DB",
     database_name: "sff-builder-preview",
-    database_id: "e9de92a8-bf50-4726-9c38-a091f4958735"
+    database_id: "184b1c72-eb50-4dab-af54-3a50d4b1c304"
   }
 ];
 

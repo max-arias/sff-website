@@ -29,20 +29,12 @@ npm run db:migrate:local
 For production:
 
 ```powershell
-npm run db:migrate:remote
-npm run cf:deploy
+npm run cf:deploy:prod
 ```
 
 ## Data Model
 
-The importer keeps optimized compatibility projections for:
-
-- `SFF Case <10L`
-- `SFF Case 10L-20L`
-- `SFF GPU <215mm`
-- `GPU >215mm`
-
-It also ingests the broader SFF Master List into generic `sff_parts`, `sff_part_specs`, `sff_part_dimensions`, and `sff_part_source_rows` tables so future compatibility engines can support coolers, AIOs, fans, RAM, risers, motherboards, PSUs, CPUs, chipsets, storage, radiators, and related references.
+The importer stores the SFF Master List in one wide `sff_parts` table with a `kind` column, normalized fields for common filtering, and raw/link JSON for source provenance. The current case/GPU compatibility views are derived from the same table.
 
 Rows with unknown dimensions are imported, flagged, and shown with warnings instead of being discarded.
 

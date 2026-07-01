@@ -22,10 +22,10 @@ Preview deployments should use a separate D1 database:
 npx wrangler d1 create sff-builder-preview
 ```
 
-Copy the returned `database_id` into `wrangler.jsonc` at:
+Copy the returned `database_id` into `scripts/patch-cloudflare-output.ts` at:
 
 ```txt
-env.preview.d1_databases[0].database_id
+previewD1Databases[0].database_id
 ```
 
 Do not point preview deployments at the production database. The seed file replaces imported rows on each run.
@@ -84,7 +84,7 @@ sff-builder-preview
 
 ## Seed File Size
 
-The generated seed SQL is large because it contains normalized rows, raw row JSON, generic parts, specs, and dimensions. The `db:seed:*` scripts use `scripts/seed-d1.ts` instead of calling `wrangler d1 execute` directly.
+The generated seed SQL is large because it contains every imported part row, plus raw source JSON and link metadata for provenance. The `db:seed:*` scripts use `scripts/seed-d1.ts` instead of calling `wrangler d1 execute` directly.
 
 The seeder:
 
