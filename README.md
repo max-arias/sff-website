@@ -2,6 +2,8 @@
 
 Nuxt 4 + Nuxt UI MVP for checking small-form-factor case and GPU dimensional compatibility. The app targets Cloudflare Workers with D1, while keeping a local JSON snapshot fallback for fast development.
 
+For product intent, audience, and scope, see [PRODUCT.md](./PRODUCT.md).
+
 ## First Run
 
 ```powershell
