@@ -57,7 +57,7 @@ npm run intake
 wrangler d1 migrations apply sff-builder --remote
 tsx scripts/seed-d1.ts --database sff-builder --remote
 npm run cf:build
-wrangler deploy .output/server/index.mjs --assets .output/public
+wrangler --cwd .output deploy
 ```
 
 ## Preview Data And Deploy
@@ -69,8 +69,10 @@ npm run cf:deploy:preview
 This runs the same flow against `sff-builder-preview`, then deploys the Worker with:
 
 ```txt
-wrangler deploy --env preview
+wrangler --cwd .output deploy --env preview
 ```
+
+The deploy command intentionally uses `wrangler --cwd .output deploy`. Nuxt's Cloudflare module generates deploy configuration inside `.output`; deploying from the repository root with `.output/server/index.mjs` can make Wrangler see conflicting generated configs.
 
 ## Seed File Size
 
