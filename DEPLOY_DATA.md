@@ -69,10 +69,18 @@ npm run cf:deploy:preview
 This runs the same flow against `sff-builder-preview`, then deploys the Worker with:
 
 ```txt
-wrangler --cwd .output deploy --env preview
+tsx scripts/patch-cloudflare-output.ts --preview
+wrangler --cwd .output deploy
 ```
 
 The deploy command intentionally uses `wrangler --cwd .output deploy`. Nuxt's Cloudflare module generates deploy configuration inside `.output`; deploying from the repository root with `.output/server/index.mjs` can make Wrangler see conflicting generated configs.
+
+Do not use Wrangler `env.preview` in `wrangler.jsonc` for this Nuxt Cloudflare output. Wrangler rejects environments inside redirected generated configs. Preview deploys instead patch `.output/server/wrangler.json` after `npm run cf:build` so the Worker name and D1 binding point at:
+
+```txt
+sff-pc-builder-preview
+sff-builder-preview
+```
 
 ## Seed File Size
 

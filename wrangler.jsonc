@@ -13,18 +13,5 @@
       "database_name": "sff-builder",
       "database_id": "f30ee868-5d34-4dc6-97f4-1758f2860cca"
     }
-  ],
-  "env": {
-    "preview": {
-      "name": "sff-pc-builder-preview",
-      "compatibility_flags": ["nodejs_compat"],
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "sff-builder-preview",
-          "database_id": "e9de92a8-bf50-4726-9c38-a091f4958735"
-        }
-      ]
-    }
-  }
+  ]
 }

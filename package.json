@@ -11,7 +11,7 @@
     "cf:dev": "npm run cf:build && wrangler --cwd .output dev",
     "cf:deploy": "npm run cf:build && wrangler --cwd .output deploy",
     "cf:deploy:prod": "npm run data:prod && npm run cf:build && wrangler --cwd .output deploy",
-    "cf:deploy:preview": "npm run data:preview && npm run cf:build && wrangler --cwd .output deploy --env preview",
+    "cf:deploy:preview": "npm run data:preview && npm run cf:build && tsx scripts/patch-cloudflare-output.ts --preview && wrangler --cwd .output deploy",
     "db:migrate:local": "wrangler d1 migrations apply sff-builder --local",
     "db:migrate:remote": "wrangler d1 migrations apply sff-builder --remote",
     "db:migrate:prod": "wrangler d1 migrations apply sff-builder --remote",
