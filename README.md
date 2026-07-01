@@ -1,6 +1,6 @@
 # SFF PC Builder
 
-Nuxt 4 + Nuxt UI MVP for checking small-form-factor case and GPU dimensional compatibility. The app targets Cloudflare Workers with D1, while keeping a local JSON snapshot fallback for fast development.
+Astro 7 + Vue MVP for checking small-form-factor case and GPU dimensional compatibility. The main page is prerendered and hydrated as a Vue island, while API routes target Cloudflare Workers with D1 and a bundled JSON snapshot fallback for fast development.
 
 For product intent, audience, and scope, see [PRODUCT.md](./PRODUCT.md).
 
@@ -30,6 +30,12 @@ For production:
 
 ```powershell
 npm run cf:deploy:prod
+```
+
+For a local Cloudflare Worker smoke test:
+
+```powershell
+npm run cf:dev
 ```
 
 ## Data Model

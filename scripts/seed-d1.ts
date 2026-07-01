@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 
 const args = new Map<string, string | boolean>();
 
@@ -28,6 +28,8 @@ const maxChunkBytes = Number(args.get("--max-chunk-bytes") || 4_000_000);
 if (!database || typeof database !== "string") {
   throw new Error("Usage: tsx scripts/seed-d1.ts --database <name> [--local|--remote] [--dry-run]");
 }
+
+const databaseName = database;
 
 async function writeChunks() {
   await rm(chunkDir, { recursive: true, force: true });
@@ -73,14 +75,14 @@ async function writeChunks() {
 
 function runWrangler(chunkPath: string) {
   return new Promise<void>((resolvePromise, reject) => {
-    const child = spawn(
+    const child: ChildProcess = spawn(
       process.platform === "win32" ? "npx.cmd" : "npx",
-      ["wrangler", "d1", "execute", database, mode, "--file", chunkPath],
+      ["wrangler", "d1", "execute", databaseName, mode, "--file", chunkPath],
       { stdio: "inherit" }
     );
 
     child.on("error", reject);
-    child.on("exit", (code) => {
+    child.on("exit", (code: number | null) => {
       if (code === 0) {
         resolvePromise();
       } else {

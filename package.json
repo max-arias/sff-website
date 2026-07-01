@@ -3,15 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nuxt dev",
-    "build": "nuxt build",
-    "typecheck": "nuxt typecheck",
-    "preview": "nuxt preview",
-    "cf:build": "nuxt build --preset=cloudflare_module",
-    "cf:dev": "npm run cf:build && wrangler --cwd .output dev",
-    "cf:deploy": "npm run cf:build && wrangler --cwd .output deploy",
-    "cf:deploy:prod": "npm run data:prod && npm run cf:build && wrangler --cwd .output deploy",
-    "cf:deploy:preview": "npm run data:preview && npm run cf:build && tsx scripts/patch-cloudflare-output.ts --preview && wrangler --cwd .output deploy",
+    "dev": "npm run cf:dev",
+    "build": "astro build",
+    "typecheck": "astro check",
+    "preview": "astro preview",
+    "cf:build": "astro build",
+    "cf:dev": "npm run cf:build && wrangler dev --config dist/server/wrangler.json",
+    "cf:deploy": "npm run cf:build && wrangler deploy --config dist/server/wrangler.json",
+    "cf:deploy:prod": "npm run data:prod && npm run cf:build && wrangler deploy --config dist/server/wrangler.json",
+    "cf:deploy:preview": "npm run data:preview && npm run cf:build && wrangler deploy --config dist/server/wrangler.json --env preview",
     "db:migrate:local": "wrangler d1 migrations apply sff-builder --local",
     "db:migrate:remote": "wrangler d1 migrations apply sff-builder --remote",
     "db:migrate:prod": "wrangler d1 migrations apply sff-builder --remote",
@@ -27,17 +27,20 @@
     "intake:sql": "tsx scripts/intake.ts --sql-only"
   },
   "dependencies": {
-    "@nuxt/ui": "^4.9.0",
+    "@astrojs/cloudflare": "^14.1.0",
+    "@astrojs/vue": "^7.0.1",
+    "astro": "^7.0.0",
     "exceljs": "^4.4.0",
     "fuse.js": "^7.4.2",
-    "nuxt": "^4.4.8"
+    "vue": "^3.5.24"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.9",
     "@cloudflare/workers-types": "^4.20260627.0",
     "@types/node": "^24.10.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.5",
-    "wrangler": "^4.53.0"
+    "wrangler": "^4.83.0"
   }
 }

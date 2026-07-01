@@ -1,13 +1,8 @@
-import type { CasePart, GenericPart, GpuPart, IntakeResult, PartKind } from "../../app/types";
+import snapshotData from "../../.data/intake-snapshot.json";
+import type { CasePart, GenericPart, GpuPart, IntakeResult, PartKind } from "../types";
 
 export async function readSnapshot(): Promise<IntakeResult> {
-  const [{ readFile }, { resolve }] = await Promise.all([
-    import("node:fs/promises"),
-    import("node:path")
-  ]);
-  const snapshotPath = resolve(".data/intake-snapshot.json");
-  const raw = await readFile(snapshotPath, "utf8");
-  return JSON.parse(raw) as IntakeResult;
+  return snapshotData as IntakeResult;
 }
 
 export function rowToCase(row: Record<string, unknown>): CasePart {

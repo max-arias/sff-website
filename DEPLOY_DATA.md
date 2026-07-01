@@ -22,11 +22,7 @@ Preview deployments should use a separate D1 database:
 npx wrangler d1 create sff-builder-preview
 ```
 
-Copy the returned `database_id` into `scripts/patch-cloudflare-output.ts` at:
-
-```txt
-previewD1Databases[0].database_id
-```
+Copy the returned `database_id` into the `env.preview.d1_databases` entry in `wrangler.jsonc`.
 
 Do not point preview deployments at the production database. The seed file replaces imported rows on each run.
 
@@ -57,7 +53,7 @@ npm run intake
 wrangler d1 migrations apply sff-builder --remote
 tsx scripts/seed-d1.ts --database sff-builder --remote
 npm run cf:build
-wrangler --cwd .output deploy
+wrangler deploy --config dist/server/wrangler.json
 ```
 
 ## Preview Data And Deploy
@@ -69,13 +65,10 @@ npm run cf:deploy:preview
 This runs the same flow against `sff-builder-preview`, then deploys the Worker with:
 
 ```txt
-tsx scripts/patch-cloudflare-output.ts --preview
-wrangler --cwd .output deploy
+wrangler deploy --config dist/server/wrangler.json --env preview
 ```
 
-The deploy command intentionally uses `wrangler --cwd .output deploy`. Nuxt's Cloudflare module generates deploy configuration inside `.output`; deploying from the repository root with `.output/server/index.mjs` can make Wrangler see conflicting generated configs.
-
-Do not use Wrangler `env.preview` in `wrangler.jsonc` for this Nuxt Cloudflare output. Wrangler rejects environments inside redirected generated configs. Preview deploys instead patch `.output/server/wrangler.json` after `npm run cf:build` so the Worker name and D1 binding point at:
+Astro's Cloudflare adapter writes the deployable Worker config to `dist/server/wrangler.json`; the deploy scripts point Wrangler at that generated config. Preview deploys use Wrangler's normal `env.preview` block so the Worker name and D1 binding point at:
 
 ```txt
 sff-pc-builder-preview

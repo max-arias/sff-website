@@ -1,11 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sff-pc-builder",
-  "main": ".output/server/index.mjs",
-  "compatibility_date": "2026-06-30",
+  "compatibility_date": "2026-05-03",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": ".output/public"
+    "directory": "./dist"
   },
   "d1_databases": [
     {
@@ -13,5 +12,17 @@
       "database_name": "sff-builder",
       "database_id": "c0449c4d-92ba-4081-801d-55cd61511d6d"
     }
-  ]
+  ],
+  "env": {
+    "preview": {
+      "name": "sff-pc-builder-preview",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "sff-builder-preview",
+          "database_id": "184b1c72-eb50-4dab-af54-3a50d4b1c304"
+        }
+      ]
+    }
+  }
 }

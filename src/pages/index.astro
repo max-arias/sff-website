@@ -1,0 +1,10 @@
+---
+import SffApp from "../components/SffApp.vue";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+export const prerender = true;
+---
+
+<BaseLayout title="SFF PC Builder">
+  <SffApp client:load />
+</BaseLayout>

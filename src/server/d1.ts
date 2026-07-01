@@ -1,4 +1,5 @@
-import type { CasePart, GenericPart, GpuPart } from "../../app/types";
+import { env } from "cloudflare:workers";
+import type { CasePart, GenericPart, GpuPart } from "../types";
 import { readSnapshot, rowToCase, rowToGenericPart, rowToGpu } from "./snapshot";
 
 interface D1Result<T> {
@@ -54,37 +55,92 @@ export interface CatalogSearchSuggestion {
   match: string;
 }
 
-interface CloudflareEventContext {
-  context?: {
-    cloudflare?: {
-      env?: {
-        DB?: D1DatabaseLike;
-      };
-    };
-  };
-  cloudflare?: {
-    env?: {
-      DB?: D1DatabaseLike;
-    };
-  };
+function getDb() {
+  return (env as { DB?: D1DatabaseLike }).DB;
 }
 
-function getDb(event: unknown) {
-  const cloudflareEvent = event as CloudflareEventContext;
-  return cloudflareEvent.context?.cloudflare?.env?.DB ?? cloudflareEvent.cloudflare?.env?.DB;
+function isMissingD1Schema(error: unknown) {
+  return error instanceof Error && /no such table: sff_parts/i.test(error.message);
+}
+
+async function shouldUseSnapshot(db: D1DatabaseLike | undefined) {
+  if (!db) return true;
+
+  try {
+    await db.prepare("select 1 from sff_parts limit 1").all();
+    return false;
+  } catch (caught) {
+    if (isMissingD1Schema(caught)) return true;
+    throw caught;
+  }
 }
 
 export async function loadParts(event: unknown): Promise<{ cases: CasePart[]; gpus: GpuPart[]; source: "d1" | "snapshot" }> {
-  const db = getDb(event);
+  void event;
+  const db = getDb();
 
-  if (!db) {
+  const useSnapshot = await shouldUseSnapshot(db);
+
+  if (useSnapshot) {
     const snapshot = await readSnapshot();
     return { cases: snapshot.cases, gpus: snapshot.gpus, source: "snapshot" };
   }
 
-  const rows = await db
+  const rows = await db!
     .prepare("select * from sff_parts where kind in ('case', 'gpu') order by kind, display_name")
-    .all<Record<string, unknown>>();
+    .all<Record<string, unknown>>()
+    .catch(async (caught) => {
+      if (!isMissingD1Schema(caught)) throw caught;
+      const snapshot = await readSnapshot();
+      return {
+        results: [
+          ...snapshot.cases.map((part) => ({
+            id: part.id,
+            kind: part.kind,
+            source_sheet: part.sourceSheet,
+            source_row_number: part.rowNumber,
+            case_seller: part.seller,
+            name: part.name,
+            case_style: part.style,
+            status: part.status,
+            case_gpu_riser: part.gpuRiser,
+            case_psu: part.psu,
+            length_mm: part.dimensions.lengthMm,
+            width_mm: part.dimensions.widthMm,
+            height_mm: part.dimensions.heightMm,
+            volume_l: part.dimensions.volumeL,
+            case_cpu_cooler_height_mm: part.dimensions.cpuCoolerHeightMm,
+            case_gpu_length_mm: part.dimensions.gpuLengthMm,
+            case_gpu_width_mm: part.dimensions.gpuWidthMm,
+            case_gpu_thickness_mm: part.dimensions.gpuThicknessMm,
+            case_pcie_slots: part.dimensions.pcieSlots,
+            case_lp_pcie_slots: part.dimensions.lpPcieSlots,
+            flags_json: JSON.stringify(part.flags),
+            raw_json: JSON.stringify(part.raw)
+          })),
+          ...snapshot.gpus.map((part) => ({
+            id: part.id,
+            kind: part.kind,
+            source_sheet: part.sourceSheet,
+            source_row_number: part.rowNumber,
+            gpu_chipset: part.chipset,
+            gpu_model: part.model,
+            gpu_brand: part.brand,
+            gpu_name: part.name,
+            gpu_low_profile: part.lowProfile ? 1 : 0,
+            gpu_watercooled: part.watercooled ? 1 : 0,
+            gpu_pcie_pins: part.pciePins,
+            gpu_tdp_w: part.tdpW,
+            length_mm: part.dimensions.lengthMm,
+            width_mm: part.dimensions.widthMm,
+            thickness_mm: part.dimensions.thicknessMm,
+            gpu_pcie_slots: part.dimensions.pcieSlots,
+            flags_json: JSON.stringify(part.flags),
+            raw_json: JSON.stringify(part.raw)
+          }))
+        ]
+      };
+    });
   const parts = rows.results ?? [];
 
   return {
@@ -320,16 +376,19 @@ async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSear
     kind: rawOptions.kind && rawOptions.kind !== "all" ? rawOptions.kind : undefined,
     sourceSheet: rawOptions.sourceSheet && rawOptions.sourceSheet !== "all" ? rawOptions.sourceSheet : undefined
   };
-  const db = getDb(event);
+  void event;
+  const db = getDb();
+
+  const useSnapshot = await shouldUseSnapshot(db);
 
   if (!options.query) {
     return {
-      source: db ? "d1" as const : "snapshot" as const,
+      source: useSnapshot ? "snapshot" as const : "d1" as const,
       suggestions: [] as CatalogSearchSuggestion[]
     };
   }
 
-  if (!db) {
+  if (useSnapshot) {
     const snapshot = await readSnapshot();
     const filtered = snapshot.parts.filter((part) => {
       if (options.kind && part.kind !== options.kind) return false;
@@ -344,7 +403,7 @@ async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSear
   }
 
   const { where, values } = buildCatalogFilterWhere(options);
-  const rows = await db
+  const rows = await db!
     .prepare(
       `select id, kind, source_sheet, source_row_number, brand, name, display_name, status, gpu_chipset, gpu_model, case_seller, case_style from sff_parts ${where}`
     )
@@ -378,9 +437,11 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
   };
 }> {
   const options = clampCatalogOptions(rawOptions);
-  const db = getDb(event);
+  const db = getDb();
 
-  if (!db) {
+  const useSnapshot = await shouldUseSnapshot(db);
+
+  if (useSnapshot) {
     const snapshot = await readSnapshot();
     const searched = options.search
       ? sortSearchMatches(
@@ -422,7 +483,7 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
     const pageIds = searchIds.slice(offset, offset + options.pageSize);
 
     if (pageIds.length) {
-      const rows = await db
+      const rows = await db!
         .prepare(`select * from sff_parts where id in (${pageIds.map(() => "?").join(", ")})`)
         .bind(...pageIds)
         .all<Record<string, unknown>>();
@@ -431,23 +492,23 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
     }
   } else {
     const { where, values } = buildCatalogWhere(options);
-    const rows = await db
+    const rows = await db!
       .prepare(`select * from sff_parts ${where} order by kind, display_name limit ? offset ?`)
       .bind(...values, options.pageSize, offset)
       .all<Record<string, unknown>>();
     parts = (rows.results ?? []).map(rowToGenericPart);
-    const filteredRows = await db
+    const filteredRows = await db!
       .prepare(`select count(*) as count from sff_parts ${where}`)
       .bind(...values)
       .all<{ count: number }>();
     filteredTotal = Number(filteredRows.results?.[0]?.count ?? 0);
   }
 
-  const totalRows = await db.prepare("select count(*) as count from sff_parts").all<{ count: number }>();
-  const byKindRows = await db
+  const totalRows = await db!.prepare("select count(*) as count from sff_parts").all<{ count: number }>();
+  const byKindRows = await db!
     .prepare("select kind, count(*) as count from sff_parts group by kind order by count desc")
     .all<{ kind: string; count: number }>();
-  const bySourceRows = await db
+  const bySourceRows = await db!
     .prepare("select source_sheet, count(*) as count from sff_parts group by source_sheet order by count desc")
     .all<{ source_sheet: string; count: number }>();
   const total = Number(totalRows.results?.[0]?.count ?? 0);

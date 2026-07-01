@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fetchAndNormalizeAll } from "../app/lib/sheets";
-import { buildSeedSql } from "../app/lib/sql";
+import { fetchAndNormalizeAll } from "../src/lib/sheets";
+import { buildSeedSql } from "../src/lib/sql";
 
 const snapshotPath = resolve(".data/intake-snapshot.json");
 const sqlPath = resolve(".data/intake-seed.sql");

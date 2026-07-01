@@ -353,7 +353,7 @@ function rowsFromWorksheet(sheetName: string, worksheet: ExcelJS.Worksheet): Raw
   return rows;
 }
 
-async function fetchWorkbookRows(warnings: string[]): Promise<RawSheetRow[]> {
+async function fetchWorkbookRows(): Promise<RawSheetRow[]> {
   const response = await fetch(sheetXlsxUrl());
   if (!response.ok) {
     throw new Error(`Failed to fetch SFF workbook: ${response.status} ${response.statusText}`);
@@ -369,7 +369,7 @@ async function fetchWorkbookRows(warnings: string[]): Promise<RawSheetRow[]> {
 
 export async function fetchAndNormalizeAll(): Promise<IntakeResult> {
   const warnings: string[] = [];
-  const rawRows = await fetchWorkbookRows(warnings).catch((error) => {
+  const rawRows = await fetchWorkbookRows().catch((error) => {
     warnings.push(error instanceof Error ? error.message : String(error));
     return [];
   });

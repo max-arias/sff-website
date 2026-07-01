@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import ExcelJS from "exceljs";
-import { SFF_INDEX_SHEET } from "../app/lib/sheets";
+import { SFF_INDEX_SHEET } from "../src/lib/sheets";
 
 const sheetId = "1AddRvGWJ_f4B6UC7_IftDiVudVc8CJ8sxLUqlxVsCz4";
 const workbookUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;

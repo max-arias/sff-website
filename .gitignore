@@ -1,8 +1,11 @@
 node_modules
 .nuxt
 .output
+.astro
+.wrangler
 .data
 .env
 .env.*
 !.env.example
 dist
+*.log

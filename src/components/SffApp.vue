@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import Fuse from "fuse.js";
-import { checkCaseGpuCompatibility } from "./lib/compatibility";
-import type { CasePart, CompatibilityResult, FitVerdict, GenericPart, GpuPart, PartKind, SffPart } from "./types";
+import { computed, onMounted, ref, watch } from "vue";
+import { checkCaseGpuCompatibility } from "../lib/compatibility";
+import type { CasePart, CompatibilityResult, FitVerdict, GenericPart, GpuPart, PartKind, SffPart } from "../types";
 
 type AppView = "builder" | "database";
 type ResultStatus = FitVerdict | "idle";
@@ -26,6 +27,27 @@ const catalogPage = ref(1);
 const catalogPageSize = ref(50);
 const selectedCase = ref<CasePart | null>(null);
 const selectedGpu = ref<GpuPart | null>(null);
+const data = ref<{ source: string; cases: CasePart[]; gpus: GpuPart[] } | null>(null);
+const pending = ref(true);
+const error = ref<Error | null>(null);
+const catalogData = ref<{
+  source: string;
+  summary: {
+    total: number;
+    filteredTotal: number;
+    byKind: Record<string, number>;
+    bySourceSheet: Record<string, number>;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    pageCount: number;
+  };
+  parts: GenericPart[];
+} | null>(null);
+const catalogPending = ref(true);
+const catalogError = ref<Error | null>(null);
+const catalogSearchData = ref<{ source: string; suggestions: CatalogSuggestion[] } | null>(null);
 
 const catalogRequestQuery = computed(() => ({
   page: catalogPage.value,
@@ -40,28 +62,6 @@ const catalogSuggestionQuery = computed(() => ({
   sourceSheet: catalogSourceSheet.value,
   limit: 8
 }));
-
-const { data, pending, error } = await useFetch<{ source: string; cases: CasePart[]; gpus: GpuPart[] }>("/api/parts");
-const { data: catalogData, pending: catalogPending, error: catalogError } = await useFetch<{
-  source: string;
-  summary: {
-    total: number;
-    filteredTotal: number;
-    byKind: Record<string, number>;
-    bySourceSheet: Record<string, number>;
-  };
-  pagination: {
-    page: number;
-    pageSize: number;
-    pageCount: number;
-  };
-  parts: GenericPart[];
-}>("/api/catalog", {
-  query: catalogRequestQuery
-});
-const { data: catalogSearchData } = await useFetch<{ source: string; suggestions: CatalogSuggestion[] }>("/api/catalog/search", {
-  query: catalogSuggestionQuery
-});
 
 const allParts = computed<SffPart[]>(() => [...(data.value?.cases ?? []), ...(data.value?.gpus ?? [])]);
 const catalogParts = computed<GenericPart[]>(() => catalogData.value?.parts ?? []);
@@ -140,6 +140,72 @@ const conditionalVisible = computed(() => visibleParts.value.filter((part) => st
 const incompatibleVisible = computed(() => visibleParts.value.filter((part) => statusForPart(part) === "fail").length);
 
 let catalogSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+function paramsFrom(query: Record<string, string | number>) {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    params.set(key, String(value));
+  });
+  return params;
+}
+
+async function fetchJson<T>(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function loadParts() {
+  pending.value = true;
+  error.value = null;
+  try {
+    data.value = await fetchJson<{ source: string; cases: CasePart[]; gpus: GpuPart[] }>("/api/parts");
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught : new Error(String(caught));
+  } finally {
+    pending.value = false;
+  }
+}
+
+async function loadCatalog() {
+  catalogPending.value = true;
+  catalogError.value = null;
+  try {
+    catalogData.value = await fetchJson<typeof catalogData.value>(
+      `/api/catalog?${paramsFrom(catalogRequestQuery.value)}`
+    );
+  } catch (caught) {
+    catalogError.value = caught instanceof Error ? caught : new Error(String(caught));
+  } finally {
+    catalogPending.value = false;
+  }
+}
+
+async function loadCatalogSuggestions() {
+  const query = catalogSuggestionQuery.value;
+  if (!query.q) {
+    catalogSearchData.value = { source: catalogData.value?.source ?? "snapshot", suggestions: [] };
+    return;
+  }
+  catalogSearchData.value = await fetchJson<{ source: string; suggestions: CatalogSuggestion[] }>(
+    `/api/catalog/search?${paramsFrom(query)}`
+  );
+}
+
+onMounted(() => {
+  void loadParts();
+  void loadCatalog();
+});
+
+watch(catalogRequestQuery, () => {
+  void loadCatalog();
+});
+
+watch(catalogSuggestionQuery, () => {
+  void loadCatalogSuggestions();
+});
 
 watch(catalogQuery, (value) => {
   if (catalogSearchTimer) clearTimeout(catalogSearchTimer);
@@ -456,7 +522,7 @@ function selectCatalogSuggestion(suggestion: CatalogSuggestion) {
             </div>
 
             <div v-if="pending" class="empty-state">Loading part telemetry...</div>
-            <div v-else-if="error" class="empty-state">Run npm run intake, then restart Nuxt.</div>
+            <div v-else-if="error" class="empty-state">Run npm run intake, then restart the dev server.</div>
             <div v-else class="fit-table">
               <div class="fit-row fit-head">
                 <span>Component</span>
@@ -564,7 +630,7 @@ function selectCatalogSuggestion(suggestion: CatalogSuggestion) {
         </div>
 
         <div v-if="catalogPending" class="empty-state">Loading catalog...</div>
-        <div v-else-if="catalogError" class="empty-state">Run npm run intake, then restart Nuxt.</div>
+        <div v-else-if="catalogError" class="empty-state">Run npm run intake, then restart the dev server.</div>
         <section v-else class="data-table-wrap">
           <div class="data-row data-head">
             <span>Model_Identifier</span>
