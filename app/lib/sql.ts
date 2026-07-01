@@ -115,8 +115,8 @@ function genericDimensionInsert(part: GenericPart, key: string, value: number) {
   ].join(", ")});`;
 }
 
-function genericSourceRowInsert(runId: string, row: RawSheetRow, partKind: string) {
-  const id = `${runId}-${partKind}-${row.sourceSheet}-${row.rowNumber}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+function genericSourceRowInsert(runId: string, row: RawSheetRow, partKind: string, index: number) {
+  const id = `${runId}-${partKind}-${index + 1}-${row.sourceSheet}-${row.rowNumber}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return `insert into sff_part_source_rows (id, import_run_id, part_kind, source_sheet, row_number, row_json) values (${[
     escapeSql(id),
     escapeSql(runId),
@@ -153,8 +153,8 @@ export function buildSeedSql(result: IntakeResult) {
     ...result.parts.flatMap((part) =>
       Object.entries(part.dimensions).map(([key, value]) => genericDimensionInsert(part, key, value))
     ),
-    ...result.rawRows.map((row) =>
-      genericSourceRowInsert(runId, row, partKindBySourceRow.get(`${row.sourceSheet}:${row.rowNumber}`) ?? "unknown")
+    ...result.rawRows.map((row, index) =>
+      genericSourceRowInsert(runId, row, partKindBySourceRow.get(`${row.sourceSheet}:${row.rowNumber}`) ?? "unknown", index)
     ),
     ...result.cases.map((part) => caseInsert(runId, part)),
     ...result.gpus.map((part) => gpuInsert(runId, part)),
