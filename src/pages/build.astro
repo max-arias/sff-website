@@ -1,11 +1,263 @@
 ---
-import BuildApp from "../components/BuildApp.vue";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getBuildView } from "../server/build-view";
+
+const view = await getBuildView(Astro, Astro.url);
 ---
 
 <BaseLayout
   title="SFF Builder | Build"
   description="A replayable fitment workspace for selecting parts, inspecting constraints, and scanning pass, conditional, and fail rows."
 >
-  <BuildApp client:load />
+  <div class="build-page">
+    <header class="topbar">
+      <div class="topbar__inner">
+        <div class="brand">SFF_DATA_LOG</div>
+
+        <nav class="nav" aria-label="Primary">
+          <a class="nav__item nav__item--active" href="/build">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4l8 8-8 8M4 12h16"></path>
+            </svg>
+            <span>Builder</span>
+          </a>
+          <a class="nav__item" href="/">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 6h14v12H5zM8 10h8M8 14h5"></path>
+            </svg>
+            <span>Launcher</span>
+          </a>
+        </nav>
+
+        <div class="topbar__tools">
+          <button
+            class="build-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="build-drawer"
+            data-drawer-toggle
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10"></path>
+            </svg>
+            <span>Build</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <button
+      class="drawer-handle"
+      type="button"
+      aria-controls="build-drawer"
+      aria-label="Open current build panel"
+      data-drawer-open
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 5h14v14H5zM9 5v14M13 9l3 3-3 3"></path>
+      </svg>
+      <span>Build</span>
+    </button>
+
+    <main class="workspace">
+      <button class="drawer-scrim" type="button" aria-label="Close current build panel" hidden data-drawer-close></button>
+
+      <aside id="build-drawer" class="sidebar" data-drawer>
+        <div class="sidebar__header">
+          <div>
+            <h1>Current Build</h1>
+            <p>
+              Compatibility status:
+              <strong class={`text-${view.buildStatus === "in-progress" ? "conditional" : view.buildStatus}`}>
+                {view.buildStatusLabel}
+              </strong>
+            </p>
+            {view.buildStatusCopy && <span class="sidebar__summary">{view.buildStatusCopy}</span>}
+          </div>
+          <button class="sidebar__close" type="button" aria-label="Close current build panel" data-drawer-close>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="slot-stack">
+          {view.slots.map((slot) => (
+            <article
+              class:list={[
+                "slot-card",
+                `slot-card--${slot.verdict}`,
+                {
+                  "slot-card--empty": !slot.id,
+                  "slot-card--unresolved": slot.state === "unresolved"
+                }
+              ]}
+            >
+              <div class="slot-card__top">
+                <span class="slot-card__label">{slot.label}</span>
+                {slot.id ? (
+                  <div class="slot-card__top-actions">
+                    <span class={`badge badge--${slot.verdict}`}>{slot.verdictCopy}</span>
+                    <a class="slot-card__clear" href={slot.clearUrl} aria-label={`Clear ${slot.kind}`} title="Clear">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6L6 18"></path>
+                      </svg>
+                    </a>
+                  </div>
+                ) : (
+                  <div class="slot-card__top-actions">
+                    <a class="slot-card__browse" href={slot.browseUrl} aria-label={slot.actionLabel} title={slot.actionLabel}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="11" cy="11" r="6.5"></circle>
+                        <path d="M16 16l5 5"></path>
+                      </svg>
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              <h2>{slot.title}</h2>
+              {slot.subtitle && <p class="slot-card__meta">{slot.subtitle}</p>}
+              {slot.note && <p class="slot-card__note">{slot.note}</p>}
+              {slot.specs.length > 0 && (
+                <dl class="slot-card__specs">
+                  {slot.specs.map((spec) => (
+                    <div class="slot-card__spec">
+                      <dt>{spec.label}</dt>
+                      <dd>{spec.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </article>
+          ))}
+        </div>
+
+        {view.buildIssues.length > 0 && (
+          <section class="issues-panel">
+            <h3>Build Issues</h3>
+            {view.buildIssues.map((section) => (
+              <div class="issues-panel__group">
+                <strong>{section.label}</strong>
+                <ul>
+                  {section.issues.map((issue) => <li>{issue}</li>)}
+                </ul>
+              </div>
+            ))}
+          </section>
+        )}
+      </aside>
+
+      <section class="main-panel">
+        <div class="main-panel__header">
+          <div>
+            <h2>Hardware Library</h2>
+            <p>Active constraints: <strong>{view.activeConstraintLabel}</strong></p>
+          </div>
+
+          <div class="toolbar">
+            <form class="search-field" method="GET" action={view.searchAction} data-autosubmit-form>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="M16 16l5 5"></path>
+              </svg>
+              {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+              <input name="search" value={view.state.search} type="search" placeholder="Search models..." data-autosubmit-input />
+            </form>
+          </div>
+        </div>
+
+        <div class="kind-tabs" role="tablist" aria-label="Part kinds">
+          {view.kindTabs.map((tab) => (
+            <a class:list={["kind-tab", { "kind-tab--active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
+              {tab.kind}
+            </a>
+          ))}
+        </div>
+
+        <div class="constraint-strip">
+          {view.constraintMeters.map((meter) => (
+            <div class="constraint-meter">
+              <div class="constraint-meter__label">
+                <span>{meter.label}</span>
+                <strong>{meter.value}</strong>
+              </div>
+              <div class="constraint-meter__track">
+                <span class={`constraint-meter__fill constraint-meter__fill--${meter.tone}`} style={`width: ${meter.ratio * 100}%`}></span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div class="table-shell">
+          <div class="table-scroll">
+            <table class="parts-table">
+              <thead>
+                <tr>
+                  {view.tableHeaders.map((header) => (
+                    <th>
+                      {view.state.kind === "psu" && header === "Tier" ? (
+                        <span class="th-with-help">
+                          Tier
+                          <span class="info-trigger" tabindex="0" aria-label="About PSU tier ratings">
+                            i
+                            <span class="info-popover" role="tooltip">
+                              Community PSU quality rating from SPL's PSU Tier List. Unmatched PSUs show "-".
+                              <a href={view.psuTierSourceUrl} target="_blank" rel="noreferrer">Open source</a>
+                            </span>
+                          </span>
+                        </span>
+                      ) : (
+                        header
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              {view.rows.length > 0 && (
+                <tbody>
+                  {view.rows.map((row) => (
+                    <tr class:list={["parts-row", `parts-row--${row.verdict}`, { "parts-row--selected": row.selected }]}>
+                      <td class="status-cell">
+                        <span class={`status-chip status-chip--${row.verdict}`}>{row.verdictLabel}</span>
+                      </td>
+                      <td>
+                        <div class="title-cell">
+                          <strong>{row.title}</strong>
+                          <span>{row.subtitle}</span>
+                        </div>
+                      </td>
+                      {row.cells.map((value, index) => (
+                        <td class:list={["mono-cell", { "mono-cell--alert": row.highlightCellIndex === index }]}>
+                          {value}
+                        </td>
+                      ))}
+                      <td class="notes-cell">{row.note}</td>
+                      <td class="action-cell">
+                        <a class={`table-button table-button--${row.actionTone}`} href={row.actionUrl}>{row.actionLabel}</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              )}
+            </table>
+
+            {view.rows.length === 0 && <div class="state-box">No rows match the active filters.</div>}
+          </div>
+
+          <footer class="table-footer">
+            <span>{view.displayStart}-{view.displayEnd} of {view.totalRows} rows</span>
+            <div class="pager">
+              <a class:list={["button", "button--ghost", { "button--disabled": view.state.page <= 1 }]} href={view.previousUrl}>Previous</a>
+              <strong>Page {view.state.page} / {view.pageCount}</strong>
+              <a class:list={["button", "button--ghost", { "button--disabled": view.state.page >= view.pageCount }]} href={view.nextUrl}>Next</a>
+            </div>
+          </footer>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../scripts/enhance-on-idle.ts"></script>
 </BaseLayout>
