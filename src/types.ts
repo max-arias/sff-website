@@ -44,6 +44,34 @@ export interface GenericPart {
   links: Record<string, string>;
 }
 
+export interface PsuTierEntry {
+  sourceSheet: string;
+  rowNumber: number;
+  rowId: string;
+  brand: string;
+  series: string;
+  qualifier: string;
+  variant: string;
+  wattages: string;
+  tier: string;
+  tierRank: number | null;
+  introYear: string;
+  formFactor: string;
+  atxVersion: string;
+  inputRange: string;
+  modularity: string;
+  efficiency: string;
+  primaryTopology: string;
+  secondaryRectifier: string;
+  regulation: string;
+  odm: string;
+  platform: string;
+  notes: string;
+  displayName: string;
+  matchKeys: string[];
+  raw: Record<string, string>;
+}
+
 export interface CasePart {
   kind: "case";
   id: string;
@@ -102,6 +130,7 @@ export interface IntakeResult {
   parts: GenericPart[];
   cases: CasePart[];
   gpus: GpuPart[];
+  psuTierEntries: PsuTierEntry[];
   warnings: string[];
 }
 

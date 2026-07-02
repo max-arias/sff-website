@@ -159,8 +159,11 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
     }
   } else {
     const { where, values } = buildCatalogWhere(options);
+    const orderBy = options.kind === "psu"
+      ? "order by case when psu_tier_rank is null then 99 else psu_tier_rank end, display_name"
+      : "order by kind, display_name";
     const rows = await db
-      .prepare(`select * from sff_parts ${where} order by kind, display_name limit ? offset ?`)
+      .prepare(`select * from sff_parts ${where} ${orderBy} limit ? offset ?`)
       .bind(...values, options.pageSize, offset)
       .all<Record<string, unknown>>();
     parts = (rows.results ?? []).map(rowToGenericPart);
@@ -256,6 +259,10 @@ function rowToGenericPart(row: Record<string, unknown>): GenericPart {
   const dimensions = JSON.parse(String(row.dimensions_json ?? "{}")) as Record<string, number>;
   const kind = String(row.kind ?? "unknown") as PartKind;
   const psuFormFactor = String(row.psu_form_factor ?? "").trim();
+  const psuTier = String(row.psu_tier ?? "").trim();
+  const psuTierSourceUrl = String(row.psu_tier_source_url ?? "").trim();
+  const psuTierSourceSheet = String(row.psu_tier_source_sheet ?? "").trim();
+  const psuTierNotes = String(row.psu_tier_notes ?? "").trim();
   const motherboardFormFactor = String(row.motherboard_form_factor ?? "").trim();
 
   mergeNumber(dimensions, "cooler_height", row.cooler_height_mm);
@@ -265,6 +272,14 @@ function rowToGenericPart(row: Record<string, unknown>): GenericPart {
   mergeNumber(dimensions, "fan_size", row.fan_size_mm);
 
   if (psuFormFactor && !specs.form_factor) specs.form_factor = psuFormFactor;
+  if (psuTier) specs.psu_tier = psuTier;
+  if (row.psu_tier_rank !== null && row.psu_tier_rank !== undefined && row.psu_tier_rank !== "") specs.psu_tier_rank = String(row.psu_tier_rank);
+  if (psuTierSourceUrl) specs.psu_tier_source_url = psuTierSourceUrl;
+  if (psuTierSourceSheet) specs.psu_tier_source_sheet = psuTierSourceSheet;
+  if (row.psu_tier_source_row_number !== null && row.psu_tier_source_row_number !== undefined && row.psu_tier_source_row_number !== "") {
+    specs.psu_tier_source_row_number = String(row.psu_tier_source_row_number);
+  }
+  if (psuTierNotes) specs.psu_tier_notes = psuTierNotes;
   if (motherboardFormFactor && !specs.form_factor) specs.form_factor = motherboardFormFactor;
 
   return {
@@ -304,7 +319,7 @@ function booleanish(value: unknown) {
 function clampCatalogOptions(options: Partial<CatalogQueryOptions> = {}): CatalogQueryOptions {
   return {
     page: Math.max(1, Math.floor(options.page ?? 1)),
-    pageSize: Math.max(10, Math.min(100, Math.floor(options.pageSize ?? 50))),
+    pageSize: Math.max(10, Math.min(500, Math.floor(options.pageSize ?? 50))),
     kind: options.kind && options.kind !== "all" ? options.kind : undefined,
     sourceSheet: options.sourceSheet && options.sourceSheet !== "all" ? options.sourceSheet : undefined,
     search: options.search?.trim() || undefined

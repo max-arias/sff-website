@@ -93,6 +93,7 @@ const slotOrder: SlotDescriptor[] = [
 
 const tabOrder: SelectableKind[] = ["gpu", "cpu-cooler", "psu", "case", "motherboard", "ram"];
 const pageSize = 25;
+const psuPageSize = 500;
 const genericKinds = new Set<SelectableKind>(["psu", "cpu-cooler", "motherboard", "ram"]);
 const psuTokenAliases: Record<string, string> = {
   sfx: "sfx",
@@ -107,6 +108,7 @@ const psuTokenAliases: Record<string, string> = {
   custom: "custom",
   "1u": "1u"
 };
+const psuTierSourceUrl = "https://docs.google.com/spreadsheets/d/1akCHL7Vhzk_EhrpIGkz8zTEvYfLDcaSpZRB6Xt6JWkc/edit";
 const motherboardTokenAliases: Record<string, string> = {
   mitx: "mitx",
   miniitx: "mitx",
@@ -127,6 +129,7 @@ const selectedIds = ref<SelectedIds>({});
 const activeKind = ref<SelectableKind>("gpu");
 const search = ref("");
 const page = ref(1);
+const buildDrawerOpen = ref(false);
 const pending = ref(true);
 const error = ref("");
 const genericPending = ref(false);
@@ -244,9 +247,10 @@ const totalRows = computed(() => {
   if (activeKind.value === "gpu") return localGpuCandidates.value.length;
   return genericCatalog.value?.summary.filteredTotal ?? 0;
 });
-const pageCount = computed(() => Math.max(1, Math.ceil(totalRows.value / pageSize)));
-const displayStart = computed(() => (totalRows.value ? (page.value - 1) * pageSize + 1 : 0));
-const displayEnd = computed(() => Math.min(page.value * pageSize, totalRows.value));
+const activePageSize = computed(() => (activeKind.value === "psu" ? psuPageSize : pageSize));
+const pageCount = computed(() => Math.max(1, Math.ceil(totalRows.value / activePageSize.value)));
+const displayStart = computed(() => (totalRows.value ? (page.value - 1) * activePageSize.value + 1 : 0));
+const displayEnd = computed(() => Math.min(page.value * activePageSize.value, totalRows.value));
 
 const selectedSlots = computed<ResolvedSelection[]>(() =>
   slotOrder.map(({ kind }) => {
@@ -313,6 +317,10 @@ const candidateRows = computed<CandidateRow[]>(() => {
   rows.sort((a, b) => {
     const verdictDelta = verdictRank(a.verdict) - verdictRank(b.verdict);
     if (verdictDelta !== 0) return verdictDelta;
+    if (activeKind.value === "psu") {
+      const tierDelta = psuTierRankForRow(a) - psuTierRankForRow(b);
+      if (tierDelta !== 0) return tierDelta;
+    }
     if (a.selected !== b.selected) return a.selected ? -1 : 1;
     return a.title.localeCompare(b.title);
   });
@@ -525,7 +533,7 @@ async function loadGenericCatalog() {
     const params = new URLSearchParams({
       kind: activeKind.value,
       page: String(page.value),
-      pageSize: String(pageSize)
+      pageSize: String(activeKind.value === "psu" ? psuPageSize : pageSize)
     });
     if (search.value.trim()) params.set("search", search.value.trim());
     const response = await fetch(`/api/catalog?${params.toString()}`);
@@ -583,6 +591,7 @@ function clearSlot(kind: SelectableKind) {
 
 function openSlot(kind: SelectableKind) {
   changeKind(kind);
+  buildDrawerOpen.value = false;
 }
 
 function verdictRank(verdict: DisplayVerdict) {
@@ -641,7 +650,7 @@ function displayTitle(part: PartRecord | null) {
   if (!part) return "Missing catalog record";
   if (part.kind === "case") return `${part.seller} ${part.name}`.trim();
   if (part.kind === "gpu") {
-    const gpuTokens = [part.brand, part.model, part.name]
+    const gpuTokens = [part.model, part.name]
       .map((value) => value.trim())
       .filter((value) => value && value.toLowerCase() !== "gpu");
     const uniqueTokens = gpuTokens.filter((value, index) => gpuTokens.indexOf(value) === index);
@@ -656,13 +665,13 @@ function displaySubtitle(part: PartRecord | null) {
     return part.dimensions.volumeL ? `${formatValue(part.dimensions.volumeL, "L")} volume` : part.style || part.sourceSheet;
   }
   if (part.kind === "gpu") {
-    return part.chipset || (part.tdpW ? `${formatValue(part.tdpW, "W")} TDP` : `${part.sourceSheet} #${part.rowNumber}`);
+    return part.brand || (part.tdpW ? `${formatValue(part.tdpW, "W")} TDP` : `${part.sourceSheet} #${part.rowNumber}`);
   }
   if (part.kind === "cpu-cooler") {
     return [specValue(part, ["type"]), "CPU cooler"].filter(Boolean).join(" / ");
   }
   if (part.kind === "psu") {
-    return [specValue(part, ["form_factor"]), specValue(part, ["80_plus_rating"])].filter(Boolean).join(" / ") || "Power supply";
+    return [specValue(part, ["form_factor"]), psuTierLabel(part), specValue(part, ["80_plus_rating"])].filter(Boolean).join(" / ") || "Power supply";
   }
   if (part.kind === "motherboard") {
     return [motherboardFormFactor(part), specValue(part, ["socket", "chipset"])].filter(Boolean).join(" / ");
@@ -711,9 +720,9 @@ function slotSpecs(kind: SelectableKind, part: PartRecord | null): SlotSpec[] {
 
   if (part?.kind === "psu") {
     return compactSpecs([
+      ["Tier", psuTierLabel(part) || "-"],
       ["Form factor", specValue(part, ["form_factor", "psu"])],
       ["Wattage", dimensionValue(part, ["wattage", "watt", "watts"], "W")],
-      ["Fan", dimensionValue(part, ["fan_size"], "mm")],
       ["Modular", yesNoValue(part, ["modular"])],
       ["12VHPWR", specValue(part, ["12vhpwr_12v_2x6_connectors"])],
       ["Rating", specValue(part, ["80_plus_rating"])]
@@ -814,7 +823,7 @@ function buildGpuRow(part: GpuPart): CandidateRow {
     id: part.id,
     kind: "gpu",
     title: displayTitle(part),
-    subtitle: part.chipset || part.sourceSheet,
+    subtitle: displaySubtitle(part),
     details: part.pciePins || "Power connector unknown",
     numericCells: [lengthCell, thicknessCell, slotsCell, formatValue(part.tdpW, "W")],
     verdict: fitment.verdict,
@@ -860,9 +869,9 @@ function genericMetricCells(part: GenericPart & { kind: SelectableKind }) {
 
   if (part.kind === "psu") {
     return [
+      psuTierLabel(part) || "-",
       specValue(part, ["form_factor", "psu"]),
       dimensionValue(part, ["wattage", "watt", "watts"], "W"),
-      dimensionValue(part, ["fan_size"], "mm"),
       specValue(part, ["12vhpwr_12v_2x6_connectors"]) || "—"
     ];
   }
@@ -903,6 +912,7 @@ function genericEvidenceNote(part: GenericPart & { kind: SelectableKind }) {
 
   if (part.kind === "psu") {
     return compactJoin([
+      psuTierLabel(part),
       specValue(part, ["form_factor", "psu"]),
       `Wattage ${dimensionValue(part, ["wattage", "watt", "watts"], "W")}`,
       specValue(part, ["modular"]) ? `Modular ${yesNoValue(part, ["modular"])}` : ""
@@ -1206,6 +1216,17 @@ function specValue(part: GenericPart, keys: string[]) {
   return "";
 }
 
+function psuTierLabel(part: GenericPart) {
+  const tier = specValue(part, ["psu_tier"]);
+  return tier ? `Tier ${tier}` : "";
+}
+
+function psuTierRankForRow(row: CandidateRow) {
+  if (row.kind !== "psu" || row.source.kind !== "psu") return 99;
+  const rank = Number(specValue(row.source, ["psu_tier_rank"]));
+  return Number.isFinite(rank) ? rank : 99;
+}
+
 function dimensionValue(part: GenericPart, keys: string[], unit = "") {
   for (const key of keys) {
     const value = part.dimensions[key];
@@ -1335,6 +1356,18 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
         </nav>
 
         <div class="topbar__tools">
+          <button
+            class="build-toggle"
+            type="button"
+            :aria-expanded="buildDrawerOpen"
+            aria-controls="build-drawer"
+            @click="buildDrawerOpen = !buildDrawerOpen"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10" />
+            </svg>
+            <span>Build</span>
+          </button>
           <button class="icon-button" type="button" aria-label="Search">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="11" cy="11" r="6.5" />
@@ -1351,15 +1384,43 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
       </div>
     </header>
 
+    <button
+      v-if="!buildDrawerOpen"
+      class="drawer-handle"
+      type="button"
+      aria-controls="build-drawer"
+      aria-label="Open current build panel"
+      @click="buildDrawerOpen = true"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 5h14v14H5zM9 5v14M13 9l3 3-3 3" />
+      </svg>
+      <span>Build</span>
+    </button>
+
     <main class="workspace">
-      <aside class="sidebar">
+      <button
+        v-if="buildDrawerOpen"
+        class="drawer-scrim"
+        type="button"
+        aria-label="Close current build panel"
+        @click="buildDrawerOpen = false"
+      ></button>
+      <aside id="build-drawer" :class="['sidebar', { 'sidebar--open': buildDrawerOpen }]">
         <div class="sidebar__header">
-          <h1>Current Build</h1>
-          <p>
-            Compatibility status:
-            <strong :class="`text-${buildStatus === 'in-progress' ? 'conditional' : buildStatus}`">{{ buildStatusLabel }}</strong>
-          </p>
-          <span v-if="buildStatusCopy" class="sidebar__summary">{{ buildStatusCopy }}</span>
+          <div>
+            <h1>Current Build</h1>
+            <p>
+              Compatibility status:
+              <strong :class="`text-${buildStatus === 'in-progress' ? 'conditional' : buildStatus}`">{{ buildStatusLabel }}</strong>
+            </p>
+            <span v-if="buildStatusCopy" class="sidebar__summary">{{ buildStatusCopy }}</span>
+          </div>
+          <button class="sidebar__close" type="button" aria-label="Close current build panel" @click="buildDrawerOpen = false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
 
         <div class="slot-stack">
@@ -1502,6 +1563,7 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   <th>Thickness</th>
                   <th>Slots</th>
                   <th>Power</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
                 <tr v-else-if="activeKind === 'case'">
@@ -1511,6 +1573,7 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   <th>GPU max length</th>
                   <th>GPU max thickness</th>
                   <th>PCIe slots</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
                 <tr v-else-if="activeKind === 'cpu-cooler'">
@@ -1520,15 +1583,28 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   <th>Footprint</th>
                   <th>TDP</th>
                   <th>Fan</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
                 <tr v-else-if="activeKind === 'psu'">
                   <th>Status</th>
                   <th>Name</th>
+                  <th>
+                    <span class="th-with-help">
+                      Tier
+                      <span class="info-trigger" tabindex="0" aria-label="About PSU tier ratings">
+                        i
+                        <span class="info-popover" role="tooltip">
+                          Community PSU quality rating from SPL's PSU Tier List. Unmatched PSUs show "-".
+                          <a :href="psuTierSourceUrl" target="_blank" rel="noreferrer">Open source</a>
+                        </span>
+                      </span>
+                    </span>
+                  </th>
                   <th>Form factor</th>
                   <th>Wattage</th>
-                  <th>Fan</th>
                   <th>12VHPWR</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
                 <tr v-else-if="activeKind === 'motherboard'">
@@ -1538,6 +1614,7 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   <th>Socket</th>
                   <th>Chipset</th>
                   <th>RAM</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
                 <tr v-else-if="activeKind === 'ram'">
@@ -1546,11 +1623,13 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   <th>Height</th>
                   <th>Type</th>
                   <th>RGB</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
                 <tr v-else>
                   <th>Status</th>
                   <th>Name</th>
+                  <th>Notes</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -1568,16 +1647,16 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                     <div class="title-cell">
                       <strong>{{ row.title }}</strong>
                       <span>{{ row.subtitle }}</span>
-                      <small>{{ row.note }}</small>
                     </div>
                   </td>
                   <td
-                    v-for="value in row.numericCells"
-                    :key="`${row.id}-${value}`"
+                    v-for="(value, index) in row.numericCells"
+                    :key="`${row.id}-${index}`"
                     :class="['mono-cell', { 'mono-cell--alert': row.verdict === 'fail' && value === row.numericCells[0] }]"
                   >
                     {{ value }}
                   </td>
+                  <td class="notes-cell">{{ row.note }}</td>
                   <td class="action-cell">
                     <button
                       :class="['table-button', `table-button--${row.actionTone}`]"
@@ -1654,6 +1733,11 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   margin: 0 auto;
 }
 
+.workspace {
+  width: min(calc(100% - 6rem), 1600px);
+  max-width: none;
+}
+
 .topbar__inner {
   display: flex;
   align-items: center;
@@ -1688,6 +1772,8 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
 
 .nav__item svg,
 .icon-button svg,
+.build-toggle svg,
+.drawer-handle svg,
 .system-link svg {
   width: 1rem;
   height: 1rem;
@@ -1709,6 +1795,51 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   gap: 0.5rem;
 }
 
+.build-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 2.2rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 0.75rem;
+}
+
+.build-toggle:hover,
+.build-toggle[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.drawer-handle {
+  position: fixed;
+  z-index: 70;
+  top: 5rem;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-left: 0;
+  background: var(--surface);
+  box-shadow: 0.35rem 0.45rem 1rem rgba(22, 35, 58, 0.12);
+  color: var(--ink);
+  font: inherit;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.55rem 0.7rem 0.55rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.drawer-handle:hover,
+.drawer-handle:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -1727,24 +1858,77 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
 }
 
 .workspace {
-  display: grid;
-  grid-template-columns: 20rem minmax(0, 1fr);
+  display: block;
   min-height: calc(100vh - 4rem);
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
   background: rgba(248, 249, 255, 0.9);
 }
 
+.drawer-scrim {
+  position: fixed;
+  z-index: 80;
+  inset: 4rem 0 0;
+  border: 0;
+  background: rgba(21, 31, 49, 0.08);
+  padding: 0;
+}
+
 .sidebar {
+  position: fixed;
+  z-index: 90;
+  top: 4rem;
+  bottom: 0;
+  left: 0;
   display: flex;
+  width: min(22rem, calc(100vw - 1.5rem));
   flex-direction: column;
+  transform: translateX(-105%);
   border-right: 1px solid var(--line);
+  box-shadow: 0.9rem 0 2rem rgba(22, 35, 58, 0.16);
   background: rgba(255, 255, 255, 0.92);
+  overflow-y: auto;
+  transition: transform 180ms ease-out;
+}
+
+.sidebar--open {
+  transform: translateX(0);
 }
 
 .sidebar__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 1.5rem;
   border-bottom: 1px solid var(--line);
+}
+
+.sidebar__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  padding: 0;
+}
+
+.sidebar__close:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.sidebar__close svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: square;
 }
 
 .sidebar__header h1,
@@ -1958,7 +2142,8 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
 .table-button,
 .kind-tab,
 .search-field input,
-.icon-button {
+.icon-button,
+.build-toggle {
   font: inherit;
 }
 
@@ -2147,6 +2332,7 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
 }
 
 .table-scroll {
+  position: relative;
   flex: 1;
   overflow: auto;
   padding: 1rem 1rem 0;
@@ -2168,8 +2354,71 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
 }
 
 .parts-table th {
+  position: relative;
+  z-index: 1;
   background: #eef3ff;
   color: var(--ink-soft);
+}
+
+.th-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.info-trigger {
+  position: relative;
+  z-index: 3;
+  display: inline-grid;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border: 1px solid rgba(61, 77, 106, 0.45);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  cursor: help;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.info-trigger:focus-visible {
+  outline: 2px solid rgba(48, 101, 193, 0.35);
+  outline-offset: 2px;
+}
+
+.info-popover {
+  position: absolute;
+  z-index: 200;
+  top: calc(100% + 0.45rem);
+  left: 50%;
+  display: none;
+  width: min(17rem, 72vw);
+  transform: translateX(-50%);
+  border: 1px solid rgba(124, 140, 166, 0.5);
+  border-radius: 0.45rem;
+  background: #fbfcff;
+  box-shadow: 0 0.75rem 1.7rem rgba(22, 35, 58, 0.16);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 0.65rem 0.7rem;
+  white-space: normal;
+}
+
+.info-popover a {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.info-trigger:hover .info-popover,
+.info-trigger:focus-visible .info-popover,
+.info-trigger:focus-within .info-popover {
+  display: block;
 }
 
 .parts-row:hover {
@@ -2211,6 +2460,14 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   font-weight: 700;
 }
 
+.notes-cell {
+  width: min(21rem, 30vw);
+  max-width: 24rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .status-cell,
 .action-cell {
   white-space: nowrap;
@@ -2250,18 +2507,13 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   color: var(--danger);
 }
 
-@media (max-width: 1080px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-  }
-}
-
 @media (max-width: 720px) {
+  .workspace {
+    width: 100%;
+    border-right: 0;
+    border-left: 0;
+  }
+
   .topbar__inner,
   .system-bar__inner,
   .main-panel__header,
@@ -2274,6 +2526,24 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
     flex-wrap: wrap;
     padding-top: 0.75rem;
     padding-bottom: 0.75rem;
+  }
+
+  .topbar__tools {
+    margin-left: auto;
+  }
+
+  .drawer-handle {
+    top: auto;
+    bottom: 1rem;
+  }
+
+  .drawer-scrim {
+    inset: 0;
+  }
+
+  .sidebar {
+    top: 0;
+    width: min(22rem, calc(100vw - 0.75rem));
   }
 
   .nav {
@@ -2300,7 +2570,12 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   }
 
   .parts-table {
-    min-width: 44rem;
+    min-width: 54rem;
+  }
+
+  .notes-cell {
+    width: 16rem;
+    max-width: 16rem;
   }
 }
 </style>

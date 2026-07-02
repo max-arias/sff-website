@@ -1,4 +1,5 @@
 import type { CasePart, GenericPart, GpuPart, IntakeResult } from "../types";
+import { normalizePsuMatchKey, PSU_TIER_LIST_SOURCE_URL } from "./psu-tier-list";
 
 function escapeSql(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "null";
@@ -30,6 +31,47 @@ function spec(part: GenericPart, keys: string[]) {
   return "";
 }
 
+function psuPartMatchKeys(part: GenericPart) {
+  const names = new Set<string>();
+  const brandName = [part.brand, part.name].filter(Boolean).join(" ");
+
+  names.add(part.displayName);
+  names.add(part.name);
+  names.add(brandName);
+  names.add(spec(part, ["name", "model", "psu"]));
+
+  return [...names].map(normalizePsuMatchKey).filter(Boolean);
+}
+
+function psuTierByMatchKey(result: IntakeResult) {
+  const index = new Map<string, IntakeResult["psuTierEntries"][number] | null>();
+
+  result.psuTierEntries.forEach((entry) => {
+    entry.matchKeys.forEach((key) => {
+      const existing = index.get(key);
+      if (existing === undefined) {
+        index.set(key, entry);
+      } else if (existing?.rowId !== entry.rowId) {
+        index.set(key, null);
+      }
+    });
+  });
+
+  return index;
+}
+
+function psuTierForPart(part: GenericPart, tierIndex: Map<string, IntakeResult["psuTierEntries"][number] | null>) {
+  if (part.kind !== "psu") return null;
+
+  const matches = new Map<string, IntakeResult["psuTierEntries"][number]>();
+  psuPartMatchKeys(part).forEach((key) => {
+    const entry = tierIndex.get(key);
+    if (entry) matches.set(entry.rowId || `${entry.sourceSheet}:${entry.rowNumber}`, entry);
+  });
+
+  return matches.size === 1 ? [...matches.values()][0] : null;
+}
+
 function motherboardFormFactor(part: GenericPart) {
   const explicit = spec(part, ["form_factor"]);
   if (explicit) return explicit;
@@ -39,9 +81,16 @@ function motherboardFormFactor(part: GenericPart) {
   return "";
 }
 
-function genericPartInsert(runId: string, part: GenericPart, casePart?: CasePart, gpuPart?: GpuPart) {
+function genericPartInsert(
+  runId: string,
+  part: GenericPart,
+  tierIndex: Map<string, IntakeResult["psuTierEntries"][number] | null>,
+  casePart?: CasePart,
+  gpuPart?: GpuPart
+) {
   const caseDimensions = casePart?.dimensions;
   const gpuDimensions = gpuPart?.dimensions;
+  const psuTier = psuTierForPart(part, tierIndex);
 
   return `insert into sff_parts (${[
     "id",
@@ -84,6 +133,12 @@ function genericPartInsert(runId: string, part: GenericPart, casePart?: CasePart
     "fan_size_mm",
     "psu_form_factor",
     "psu_wattage",
+    "psu_tier",
+    "psu_tier_rank",
+    "psu_tier_source_url",
+    "psu_tier_source_sheet",
+    "psu_tier_source_row_number",
+    "psu_tier_notes",
     "motherboard_form_factor",
     "ram_height_mm",
     "specs_json",
@@ -132,6 +187,12 @@ function genericPartInsert(runId: string, part: GenericPart, casePart?: CasePart
     escapeSql(dim(part, ["size", "fan_size"])),
     escapeSql(spec(part, ["form_factor", "psu"])),
     escapeSql(dim(part, ["wattage", "watt", "watts"])),
+    escapeSql(psuTier?.tier ?? ""),
+    escapeSql(psuTier?.tierRank ?? null),
+    escapeSql(psuTier ? PSU_TIER_LIST_SOURCE_URL : ""),
+    escapeSql(psuTier?.sourceSheet ?? ""),
+    escapeSql(psuTier?.rowNumber ?? null),
+    escapeSql(psuTier?.notes ?? ""),
     escapeSql(part.kind === "motherboard" ? motherboardFormFactor(part) : spec(part, ["form_factor", "size"])),
     escapeSql(part.kind === "ram" ? dim(part, ["height", "height_incl_contact_pins"]) : null),
     json(part.specs),
@@ -146,6 +207,7 @@ export function buildSeedSql(result: IntakeResult) {
   const runId = `import-${result.generatedAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}`;
   const casesBySourceRow = new Map(result.cases.map((part) => [`${part.sourceSheet}:${part.rowNumber}`, part]));
   const gpusBySourceRow = new Map(result.gpus.map((part) => [`${part.sourceSheet}:${part.rowNumber}`, part]));
+  const tierIndex = psuTierByMatchKey(result);
   const lines = [
     "delete from sff_parts;",
     "delete from import_runs;",
@@ -161,6 +223,7 @@ export function buildSeedSql(result: IntakeResult) {
       genericPartInsert(
         runId,
         part,
+        tierIndex,
         casesBySourceRow.get(`${part.sourceSheet}:${part.rowNumber}`),
         gpusBySourceRow.get(`${part.sourceSheet}:${part.rowNumber}`)
       )

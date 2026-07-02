@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { fetchPsuTierEntries } from "./psu-tier-list";
 import type { CasePart, GenericPart, GpuPart, IntakeResult, PartKind, RawSheetRow } from "../types";
 
 const SHEET_ID = "1AddRvGWJ_f4B6UC7_IftDiVudVc8CJ8sxLUqlxVsCz4";
@@ -378,6 +379,10 @@ export async function fetchAndNormalizeAll(): Promise<IntakeResult> {
     warnings.push(error instanceof Error ? error.message : String(error));
     return [];
   });
+  const psuTierEntries = await fetchPsuTierEntries().catch((error) => {
+    warnings.push(error instanceof Error ? error.message : String(error));
+    return [];
+  });
   const rawCaseRows = rawRows.filter((row) => (SFF_SHEETS.cases as readonly string[]).includes(row.sourceSheet));
   const rawGpuRows = rawRows.filter((row) => (SFF_SHEETS.gpus as readonly string[]).includes(row.sourceSheet));
 
@@ -387,6 +392,7 @@ export async function fetchAndNormalizeAll(): Promise<IntakeResult> {
     parts: rawRows.map(normalizeGenericPart).filter((part) => part.displayName),
     cases: rawCaseRows.map(normalizeCase).filter((part) => part.name),
     gpus: rawGpuRows.map(normalizeGpu).filter((part) => part.model || part.name),
+    psuTierEntries,
     warnings
   };
 }
