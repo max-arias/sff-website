@@ -54,7 +54,7 @@ The current MVP supports:
 - Importing every exported SFF Master List worksheet except the workbook index tab.
 - Normalizing dirty spreadsheet values into structured fields.
 - Preserving source hyperlinks for product, seller, and other linked sheet cells.
-- Searching across cases and GPUs.
+- Searching across cases and GPUs with D1-backed autocomplete after 3 typed characters.
 - Starting from either a case or a GPU.
 - Selecting incompatible combinations intentionally.
 - Showing exact fit issues and warning messages.
@@ -108,12 +108,14 @@ The interface should feel like a fast technical instrument, not a lifestyle conf
 The preferred direction is:
 
 - Search first.
+- Keep the homepage utilitarian and tool-like rather than marketing-led.
 - Dense, scan-friendly data.
 - Stark visual hierarchy.
 - Ghost incompatible parts instead of hiding them.
 - Explain every failure with a concrete reason.
 - Let users choose invalid combinations so they can learn why they fail.
 - Treat warnings as first-class information, not footnotes.
+- Make autocomplete labels specific enough to distinguish real variants, not just family names.
 
 The target user values speed, clarity, and specificity over decorative 3D renders.
 
