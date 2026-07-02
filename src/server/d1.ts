@@ -363,10 +363,15 @@ function sortSearchMatches<T>(items: T[], query: string, textFor: (item: T) => s
 }
 
 function rowSuggestion(row: CatalogSearchRow & { score: number }): CatalogSearchSuggestion {
+  const gpuTitle = [row.brand, row.name].filter(Boolean).join(" ").trim();
+  const caseTitle = [row.case_seller, row.name || row.display_name, row.case_style].filter(Boolean).join(" ").trim();
+
   return {
     id: String(row.id),
     kind: String(row.kind),
-    displayName: String(row.display_name),
+    displayName: row.kind === "gpu"
+      ? [gpuTitle, row.gpu_model].filter(Boolean).join(" · ")
+      : caseTitle || String(row.display_name),
     sourceSheet: String(row.source_sheet),
     rowNumber: Number(row.source_row_number),
     score: row.score,
