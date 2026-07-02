@@ -1,172 +1,122 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 
-const quickSearchTerms = ["FormD T1", "RTX 4090", "Velka 3", "NH-L9i", "SF750"];
+const quickSearchTerms = [
+  { label: "FormD T1", kind: "case" },
+  { label: "RTX 4090", kind: "gpu" },
+  { label: "Velka 3", kind: "case" },
+  { label: "NH-L9i", kind: "cpu-cooler" },
+  { label: "SF750", kind: "psu" }
+];
 
 const launchPaths = [
   {
+    kind: "case",
     eyebrow: "Case-first flow",
-    title: "Start with a case",
-    copy: "Scan volume, GPU envelope, riser requirements, and thermal limits before you commit to a layout.",
-    cta: "Browse case database",
+    title: "Start with a Case",
+    copy: "Browse cases by volume, GPU envelope, riser notes, and layout constraints before you commit to a build path.",
+    cta: "Browse database",
     samples: ["FormD T1 · 9.95L", "Velka 3 · 3.96L", "A4-H2O · 11.0L"]
   },
   {
+    kind: "gpu",
     eyebrow: "GPU-first flow",
     title: "Start with a GPU",
-    copy: "Work backward from the card you already own, then surface every enclosure that clears the real dimensions.",
+    copy: "Start from the card you own, then move into `/build` with its dimensions and fitment evidence in view.",
     cta: "Find fitment",
     samples: ["RTX 4090 · 304mm", "RX 7900 XTX · 287mm", "ProArt 4080 · 300mm"]
   }
 ];
 
-const validations = [
-  ["Fractal Terra + 4080 FE", "Verified: 3.4mm CPU clearance margin"],
-  ["FormD T1 + ProArt 4080", "Verified: 240mm radiator and tube route"],
-  ["Velka 3 + ITX 4060", "Verified: Flex-ATX PSU fitment"],
-  ["A4-H2O + Strix 4070 Ti", "Verified: Triple-slot 322mm GPU"]
+const referenceChecks = [
+  ["Fractal Terra + 4080 FE", "Reference check: 3.4mm CPU clearance margin noted"],
+  ["FormD T1 + ProArt 4080", "Reference check: radiator and tube routing caveat retained"],
+  ["Velka 3 + ITX 4060", "Reference check: Flex-ATX PSU constraint stays visible"],
+  ["A4-H2O + Strix 4070 Ti", "Reference check: triple-slot width requires close review"]
 ];
 
 const principles = [
   {
-    title: "Millimeter-perfect logic",
-    copy: "Dimensions are checked against the technical drawings, not rounded shopping-page guesses."
+    title: "Millimeter-first fitment",
+    copy: "The launcher points into a table-driven engine built around physical envelopes, not generic parts browsing."
   },
   {
-    title: "Uncertainty stays visible",
-    copy: "Conditional fits, incomplete specs, and routing caveats stay in the result instead of getting buried."
+    title: "Pass, conditional, fail",
+    copy: "Known conflicts stay visible next to uncertain rows so builders can inspect risk instead of having it filtered away."
   },
   {
-    title: "Community proof matters",
-    copy: "Real build notes and validated pairings turn spreadsheets into decisions you can trust."
+    title: "Replayable URL state",
+    copy: "Selections and filters move into `/build` as readable query parameters that can be shared, reopened, and debugged."
   }
 ];
 
-const protocol = [
-  {
-    stat: "2,400+",
-    label: "catalog records ready for search",
-    copy: "Cases, GPUs, coolers, and related fitment data normalized into one compatibility surface."
-  },
-  {
-    stat: "pass / fail / conditional",
-    label: "outcomes that show the evidence",
-    copy: "The system favors clarity over confidence theater, especially when the source data is incomplete."
-  },
-  {
-    stat: "search first",
-    label: "workflow tuned for expert scanning",
-    copy: "The interface is built like an instrument panel so repeat builders can move fast without losing context."
-  }
+const footerLinks = [
+  { label: "Open build workspace", href: "/build" },
+  { label: "Launcher section", href: "#launcher" },
+  { label: "Reference checks", href: "#proof" }
 ];
 ---
 
 <BaseLayout
   title="SFF Builder | Precision PC Planning"
-  description="A technical homepage for planning small-form-factor builds with case and GPU clearance data."
+  description="Launcher homepage for the SFF Builder fitment engine. Search parts, start from a case or GPU, and hand off into /build with replayable URL state."
 >
   <div class="min-h-screen">
-    <header class="sticky top-0 z-50 border-b border-line/80 bg-canvas/88 backdrop-blur-md">
-      <div class="mx-auto flex max-w-[88rem] items-center justify-between gap-6 px-shell py-4">
+    <header class="sticky top-0 z-50 border-b border-line/80 bg-canvas/94 backdrop-blur-sm">
+      <div class="mx-auto flex max-w-[80rem] items-center justify-between gap-6 px-shell py-4">
         <div class="flex items-center gap-8">
-          <a href="#top" class="font-mono text-lg font-bold tracking-[-0.04em] text-accent-strong">SFF Builder</a>
-          <nav class="hidden items-center gap-6 text-sm text-ink-soft md:flex">
-            <a class="transition hover:text-ink" href="#launcher">Builder</a>
+          <a href="#top" class="font-sans text-[1.45rem] font-extrabold tracking-[-0.04em] text-accent-strong">SFF Builder</a>
+          <nav class="hidden items-center gap-8 text-[0.95rem] text-ink-soft md:flex">
+            <a class="border-b-2 border-accent pb-1 font-semibold text-ink" href="#launcher">Builder</a>
             <a class="transition hover:text-ink" href="#proof">Proof</a>
-            <a class="transition hover:text-ink" href="#method">Method</a>
+            <a class="transition hover:text-ink" href="/build">Workspace</a>
           </nav>
         </div>
 
-        <button
-          type="button"
-          data-theme-toggle
-          class="inline-flex items-center gap-3 rounded-full border border-line bg-panel-2 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft transition hover:border-line-strong hover:text-ink"
-          aria-label="Toggle theme"
-        >
-          <span>Theme</span>
-          <span class="relative block h-5 w-10 rounded-full bg-panel-3">
-            <span class="theme-toggle-thumb absolute left-0.5 top-0.5 block h-4 w-4 rounded-full bg-accent"></span>
-          </span>
-        </button>
+        <div class="flex items-center gap-3">
+          <a
+            href="/build"
+            class="hidden border border-line bg-panel-2 px-4 py-2 text-sm font-semibold text-ink transition hover:border-line-strong hover:bg-panel md:inline-flex"
+          >
+            Open /build
+          </a>
+          <button
+            type="button"
+            data-theme-toggle
+            class="inline-flex h-10 w-10 items-center justify-center border border-line bg-panel text-ink-soft transition hover:border-line-strong hover:text-ink"
+            aria-label="Toggle theme"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M12 3v2.5M12 18.5V21M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M3 12h2.5M18.5 12H21M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"></path>
+              <circle cx="12" cy="12" r="4.4"></circle>
+            </svg>
+          </button>
+        </div>
       </div>
     </header>
 
     <main id="top">
-      <section class="blueprint-surface relative overflow-hidden border-b border-line/70">
-        <div class="mx-auto grid max-w-[88rem] gap-10 px-shell pb-16 pt-10 md:pb-24 md:pt-14">
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="inline-flex items-center gap-2 border border-line bg-panel-2/80 px-3 py-1.5 font-mono text-[0.72rem] font-bold uppercase tracking-[0.18em] text-ink-soft">
-              <span class="h-2 w-2 rounded-full bg-success"></span>
-              System status: operational // v3.4.0
-            </div>
-            <div class="inline-flex items-center gap-2 border border-line/60 px-3 py-1.5 font-mono text-[0.72rem] text-ink-faint">
-              case / gpu / cooler / riser
-            </div>
-          </div>
-
-          <div class="grid gap-grid-gap lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-            <section class="tech-frame grid gap-5 p-5 md:p-6">
-              <div class="flex flex-wrap items-center justify-between gap-4 border-b border-line/70 pb-4">
-                <div>
-                  <p class="micro-label mb-2">Builder protocol</p>
-                  <h1 class="font-mono text-[clamp(1.5rem,2.8vw,2.4rem)] font-bold tracking-[-0.05em] text-ink">
-                    Search first. Verify fit after.
-                  </h1>
-                </div>
-                <div class="border border-line/70 px-3 py-2 font-mono text-[0.72rem] uppercase tracking-[0.16em] text-ink-faint">
-                  local d1 / live query path
-                </div>
-              </div>
-
-              <div class="grid gap-3 text-sm text-ink-soft md:grid-cols-3">
-                <div class="border border-line/60 bg-canvas/30 px-4 py-3">
-                  <div class="micro-label mb-2">Input</div>
-                  <p>Search by case, GPU, or part family, then narrow to a physical envelope.</p>
-                </div>
-                <div class="border border-line/60 bg-canvas/30 px-4 py-3">
-                  <div class="micro-label mb-2">Evaluation</div>
-                  <p>Compare card dimensions, slot depth, riser needs, and layout caveats against the catalog.</p>
-                </div>
-                <div class="border border-line/60 bg-canvas/30 px-4 py-3">
-                  <div class="micro-label mb-2">Output</div>
-                  <p>Return pass, fail, or conditional with the exact notes that need manual verification.</p>
-                </div>
-              </div>
-            </section>
-
-            <aside class="tech-frame grid gap-4 p-5">
-              <div class="micro-label">Fit states</div>
-              <div class="grid gap-3 text-sm text-ink-soft">
-                <div class="flex items-center justify-between gap-4 border-b border-line/70 pb-3">
-                  <span>Known dimensions fit</span>
-                  <strong class="font-mono text-success">PASS</strong>
-                </div>
-                <div class="flex items-center justify-between gap-4 border-b border-line/70 pb-3">
-                  <span>Hard clearance collision</span>
-                  <strong class="font-mono text-danger">FAIL</strong>
-                </div>
-                <div class="flex items-center justify-between gap-4">
-                  <span>Missing data or layout caveats</span>
-                  <strong class="font-mono text-warning">CONDITIONAL</strong>
-                </div>
-              </div>
-            </aside>
+      <section class="surface-grid border-b border-line/70 px-shell pb-10 pt-14 md:pb-14">
+        <div class="mx-auto max-w-[80rem]">
+          <div class="inline-flex items-center gap-2 border border-line bg-panel-2/80 px-3 py-1.5 font-mono text-[0.72rem] uppercase tracking-[0.16em] text-ink-soft">
+            <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
+            Route status: `/build` live // URL state public
           </div>
         </div>
       </section>
 
-      <section id="launcher" class="relative z-20 overflow-visible px-shell py-section">
-        <div class="mx-auto grid max-w-[88rem] gap-grid-gap">
-          <div class="tech-frame p-6 md:p-8">
+      <section id="launcher" class="bg-canvas-2/38 px-shell py-8 md:py-12">
+        <div class="mx-auto flex max-w-[80rem] flex-col gap-4">
+          <section class="launcher-panel p-6 md:p-8">
             <div class="flex items-center gap-3">
               <svg viewBox="0 0 24 24" class="h-5 w-5 text-accent" fill="none" stroke="currentColor" stroke-width="1.75">
                 <circle cx="11" cy="11" r="6.5"></circle>
                 <path d="M16 16L21 21"></path>
               </svg>
-              <p class="micro-label">Quick search</p>
+              <h1 class="micro-label text-ink">Quick search</h1>
             </div>
 
-            <div class="mt-6" data-autocomplete-root>
+            <form class="mt-6" data-autocomplete-root>
               <label class="relative block">
                 <span class="sr-only">Search components</span>
                 <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -177,7 +127,7 @@ const protocol = [
                   data-autocomplete-input
                   type="text"
                   placeholder="Search case, GPU, or CPU cooler..."
-                  class="h-14 w-full border border-line bg-canvas-2/70 pl-12 pr-4 text-base text-ink outline-none transition placeholder:text-ink-faint focus:border-accent"
+                  class="h-14 w-full border border-line bg-canvas-2/85 pl-12 pr-4 text-base text-ink outline-none transition placeholder:text-ink-faint focus:border-accent"
                   autocomplete="off"
                 />
               </label>
@@ -185,47 +135,62 @@ const protocol = [
                 <div data-autocomplete-status class="px-4 py-3 text-sm text-ink-soft"></div>
                 <div data-autocomplete-results class="grid"></div>
               </div>
-            </div>
+            </form>
 
             <div class="mt-5 flex flex-wrap gap-2">
               {quickSearchTerms.map((term) => (
-                <span class="border border-line bg-panel-2 px-3 py-1.5 font-mono text-xs text-ink-soft">{term}</span>
+                <button
+                  type="button"
+                  class="spec-chip"
+                  data-suggested-part
+                  data-launch-query={term.label}
+                  data-launch-kind={term.kind}
+                >
+                  {term.label}
+                </button>
               ))}
             </div>
 
-            <div class="mt-8 border-t border-line/70 pt-5 text-sm text-ink-soft">
-              Search 2,400+ validated components in a clearance-aware catalog designed for SFF tradeoffs.
+            <div class="mt-8 border-t border-line/80 pt-5 text-[1.05rem] text-ink-soft">
+              Search the catalog, then launch into `/build` with a readable handoff instead of hidden session state.
             </div>
+          </section>
+
+          <div class="flex items-center gap-3 px-2">
+            <svg viewBox="0 0 24 24" class="h-5 w-5 text-accent" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path d="M12 3v5"></path>
+              <path d="M8 21l4-5 4 5"></path>
+              <path d="M8.5 8.5h7v6h-7z"></path>
+            </svg>
+            <p class="micro-label text-ink">Build wizard</p>
           </div>
 
-          <div class="grid gap-grid-gap lg:grid-cols-2">
-            {launchPaths.map((path, index) => (
-              <section class="group tech-frame grid min-h-[23rem] gap-8 p-6 transition duration-200 hover:border-line-strong hover:bg-panel-2 md:p-8">
-                <div class="grid gap-5">
-                  <div class="flex h-12 w-12 items-center justify-center bg-panel-3 text-accent">
+          <div class="grid gap-4 lg:grid-cols-2">
+            {launchPaths.map((path) => (
+              <section class="launcher-panel flex min-h-[19rem] flex-col justify-between p-6 md:p-7">
+                <div>
+                  <div class="mb-6 flex h-11 w-11 items-center justify-center bg-panel-3 text-accent">
                     {
-                      index === 0 ? (
-                        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.75">
-                          <path d="M5 6.5h14v11H5z"></path>
-                          <path d="M8 10h8"></path>
-                          <path d="M8 13.5h5"></path>
+                      path.kind === "case" ? (
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.75">
+                          <path d="M6 5.5h12v13H6z"></path>
+                          <path d="M9 9h6"></path>
+                          <path d="M9 12.5h6"></path>
                         </svg>
                       ) : (
-                        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.75">
-                          <rect x="4.5" y="6" width="15" height="12"></rect>
-                          <path d="M8 9h8M8 12h8M8 15h5"></path>
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.75">
+                          <rect x="5.5" y="6.5" width="13" height="11"></rect>
+                          <path d="M9 10h2M13 10h2M9 13h2M13 13h2"></path>
                         </svg>
                       )
                     }
                   </div>
 
-                  <div>
-                    <p class="micro-label mb-3">{path.eyebrow}</p>
-                    <h2 class="font-sans text-3xl font-semibold tracking-[-0.04em] text-ink">{path.title}</h2>
-                    <p class="mt-3 max-w-[48ch] text-base leading-7 text-ink-soft">{path.copy}</p>
-                  </div>
+                  <p class="micro-label mb-2">{path.eyebrow}</p>
+                  <h2 class="text-[clamp(1.7rem,2.8vw,2.1rem)] font-semibold tracking-[-0.03em] text-ink">{path.title}</h2>
+                  <p class="mt-3 max-w-[34rem] text-[1.02rem] leading-7 text-ink-soft">{path.copy}</p>
 
-                  <div class="relative block" data-autocomplete-root data-kind={index === 0 ? "case" : "gpu"}>
+                  <form class="relative mt-6 block" data-autocomplete-root data-kind={path.kind} data-launch-kind={path.kind}>
                     <span class="sr-only">{path.title}</span>
                     <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" fill="none" stroke="currentColor" stroke-width="1.75">
                       <circle cx="11" cy="11" r="6.5"></circle>
@@ -234,135 +199,117 @@ const protocol = [
                     <input
                       data-autocomplete-input
                       type="text"
-                      placeholder={index === 0 ? "Search cases..." : "Search GPUs..."}
-                      class="h-11 w-full border border-line bg-canvas-2/70 pl-10 pr-4 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-accent"
+                      placeholder={path.kind === "case" ? "Search cases..." : "Search GPUs..."}
+                      class="h-11 w-full border border-line bg-canvas-2/85 pl-10 pr-4 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-accent"
                       autocomplete="off"
                     />
                     <div data-autocomplete-panel class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] hidden border border-line bg-panel shadow-card">
                       <div data-autocomplete-status class="px-4 py-3 text-sm text-ink-soft"></div>
                       <div data-autocomplete-results class="grid"></div>
                     </div>
-                  </div>
+                  </form>
 
-                  <div class="flex flex-wrap gap-2">
+                  <div class="mt-4 flex flex-wrap gap-2">
                     {path.samples.map((sample) => (
-                      <span class="border border-line bg-panel-2 px-2.5 py-1 font-mono text-[0.7rem] text-ink-soft">{sample}</span>
+                      <button
+                        type="button"
+                        class="spec-chip"
+                        data-suggested-part
+                        data-launch-query={sample.split(" · ")[0]}
+                        data-launch-kind={path.kind}
+                      >
+                        {sample}
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between gap-4">
-                  <span class="micro-label text-accent">{path.cta}</span>
-                  <svg viewBox="0 0 24 24" class="h-5 w-5 text-accent transition duration-200 group-hover:translate-x-1" fill="none" stroke="currentColor" stroke-width="1.75">
+                <a
+                  href={path.kind === "case" ? "/build?kind=case" : "/build?kind=gpu"}
+                  class="mt-8 inline-flex items-center justify-between gap-4 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-accent transition hover:text-accent-strong"
+                >
+                  <span>{path.cta}</span>
+                  <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.75">
                     <path d="M5 12h14"></path>
                     <path d="M13 6l6 6-6 6"></path>
                   </svg>
-                </div>
+                </a>
               </section>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="proof" class="relative z-0 border-y border-line/70 bg-panel/60 px-shell py-section">
-        <div class="mx-auto grid max-w-[88rem] gap-10 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.7fr)]">
+      <section id="proof" class="border-y border-line/80 bg-panel/68 px-shell py-14">
+        <div class="mx-auto grid max-w-[80rem] gap-10 lg:grid-cols-[minmax(0,1.65fr)_20.5rem]">
           <div>
-            <div class="mb-6 flex items-center justify-between gap-4">
+            <div class="mb-8 flex items-center justify-between gap-4">
               <div class="flex items-center gap-3">
                 <svg viewBox="0 0 24 24" class="h-5 w-5 text-accent" fill="none" stroke="currentColor" stroke-width="1.75">
                   <path d="M12 3l7 3v6c0 4.3-2.6 7.6-7 9-4.4-1.4-7-4.7-7-9V6l7-3z"></path>
                   <path d="M9 12l2 2 4-4"></path>
                 </svg>
-                <p class="micro-label">Recent validations</p>
+                <p class="micro-label text-ink">Reference checks</p>
               </div>
-              <a href="#method" class="text-sm text-ink-soft transition hover:text-accent">View community builds</a>
+              <a href="/build" class="text-sm text-accent transition hover:text-accent-strong">Open fitment workspace</a>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">
-              {validations.map(([title, copy]) => (
-                <article class="border border-line bg-canvas/40 p-5 transition hover:border-line-strong hover:bg-panel-2">
-                  <div class="flex items-start gap-4">
-                    <div class="mt-0.5 flex h-10 w-10 items-center justify-center bg-panel-3 text-accent">
-                      <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.75">
-                        <path d="M5 12.5l4 4 10-10"></path>
-                      </svg>
+              {referenceChecks.map(([title, copy]) => (
+                <article class="proof-row">
+                  <div class="proof-row__icon">
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.75">
+                      <path d="M7 12.5l3 3 7-7"></path>
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="proof-row__label">check</span>
+                      <h3 class="font-mono text-sm font-semibold text-ink md:text-[0.97rem]">{title}</h3>
                     </div>
-                    <div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span class="border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.18em] text-accent">Match</span>
-                        <h3 class="font-mono text-sm font-semibold text-ink md:text-base">{title}</h3>
-                      </div>
-                      <p class="mt-2 text-sm text-ink-soft">{copy}</p>
-                    </div>
+                    <p class="mt-1.5 text-sm text-ink-soft">{copy}</p>
                   </div>
                 </article>
               ))}
             </div>
           </div>
 
-          <aside class="tech-frame p-6 md:p-8">
-            <h2 class="font-sans text-3xl font-semibold tracking-[-0.04em] text-ink">Why SFF Builder?</h2>
-            <ul class="mt-8 grid gap-6">
+          <aside class="launcher-panel p-8">
+            <h2 class="text-[2rem] font-semibold tracking-[-0.04em] text-ink">Why SFF Builder?</h2>
+            <ul class="mt-8 grid gap-7">
               {principles.map((item) => (
-                <li class="grid gap-2 border-b border-line/60 pb-6 last:border-b-0 last:pb-0">
-                  <p class="font-sans text-lg font-semibold text-ink">{item.title}</p>
-                  <p class="max-w-[34ch] text-sm leading-7 text-ink-soft">{item.copy}</p>
+                <li class="grid gap-2 border-b border-line/70 pb-6 last:border-b-0 last:pb-0">
+                  <p class="text-[1.05rem] font-semibold text-ink">{item.title}</p>
+                  <p class="text-sm leading-7 text-ink-soft">{item.copy}</p>
                 </li>
               ))}
             </ul>
           </aside>
         </div>
       </section>
-
-      <section id="method" class="px-shell py-section">
-        <div class="mx-auto max-w-[88rem]">
-          <div class="max-w-3xl">
-            <p class="micro-label mb-4">Method</p>
-            <h2 class="font-mono text-[clamp(2rem,4vw,3.75rem)] font-bold leading-[0.95] tracking-[-0.06em] text-ink">
-              A technical instrument, not a lifestyle configurator.
-            </h2>
-            <p class="mt-5 max-w-[62ch] text-lg leading-8 text-ink-soft">
-              The interface is built for people who already know that a build can be “compatible” on paper and still fail in the chassis. Search comes first, warnings stay visible, and every result is framed around the physical constraints that actually break SFF plans.
-            </p>
-          </div>
-
-          <div class="mt-10 grid gap-grid-gap lg:grid-cols-3">
-            {protocol.map((item) => (
-              <article class="tech-frame grid gap-5 p-6 md:p-7">
-                <div>
-                  <p class="font-mono text-[1.7rem] font-bold tracking-[-0.05em] text-accent-strong">{item.stat}</p>
-                  <p class="mt-2 font-mono text-[0.72rem] uppercase tracking-[0.18em] text-ink-faint">{item.label}</p>
-                </div>
-                <p class="text-sm leading-7 text-ink-soft">{item.copy}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
     </main>
 
-    <footer class="border-t border-line/80 bg-canvas/70 px-shell py-12">
-      <div class="mx-auto grid max-w-[88rem] gap-10 md:grid-cols-[minmax(0,1fr)_auto]">
-        <div class="max-w-md">
+    <footer class="bg-canvas px-shell py-12">
+      <div class="mx-auto grid max-w-[80rem] gap-10 border-t border-line/80 pt-10 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div class="max-w-sm">
           <p class="micro-label mb-4 text-accent-strong">SFF Builder</p>
-          <p class="text-2xl font-semibold tracking-[-0.04em] text-ink">
-            Engineered for precision, built for people who would rather verify than guess.
-          </p>
-          <p class="mt-4 text-sm leading-7 text-ink-soft">
-            The current homepage is a focused shell for the product reset: one route, two themes, and a clearer story around the fitment engine underneath it.
+          <p class="text-[1.8rem] font-medium tracking-[-0.04em] text-ink">
+            A launcher into the fitment engine, tuned for builders who would rather inspect evidence than guess.
           </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-x-12 gap-y-6 text-sm">
+        <div class="grid gap-x-12 gap-y-6 text-sm md:grid-cols-2">
           <div class="grid gap-3">
-            <p class="micro-label">Platform</p>
-            <a href="#launcher" class="text-ink-soft transition hover:text-ink">Builder entry</a>
-            <a href="#proof" class="text-ink-soft transition hover:text-ink">Validation proof</a>
+            <p class="micro-label text-ink">Platform</p>
+            {footerLinks.map((link) => (
+              <a href={link.href} class="text-ink-soft transition hover:text-ink">{link.label}</a>
+            ))}
           </div>
           <div class="grid gap-3">
-            <p class="micro-label">Principles</p>
-            <a href="#method" class="text-ink-soft transition hover:text-ink">Compatibility method</a>
-            <a href="#top" class="text-ink-soft transition hover:text-ink">Back to top</a>
+            <p class="micro-label text-ink">Fitment rules</p>
+            <span class="text-ink-soft">`pass` stays visible</span>
+            <span class="text-ink-soft">`conditional` keeps uncertainty</span>
+            <span class="text-ink-soft">`fail` marks known hard conflicts</span>
           </div>
         </div>
       </div>
@@ -389,7 +336,67 @@ const protocol = [
       applyTheme(nextTheme);
     });
 
+    const toBuildUrl = ({ query = "", selectedKind = "", selectedId = "", launchKind = "" }) => {
+      const params = new URLSearchParams();
+      const normalizedLaunchKind = launchKind || selectedKind;
+      const selectableKinds = new Set(["case", "gpu", "psu", "cpu-cooler", "motherboard", "ram"]);
+
+      if (selectedId && selectableKinds.has(selectedKind)) {
+        params.set(selectedKind, selectedId);
+        if (selectedKind === "case") {
+          params.set("kind", "gpu");
+        } else if (selectedKind === "gpu") {
+          params.set("kind", "case");
+        } else {
+          params.set("kind", selectedKind);
+        }
+      } else {
+        if (normalizedLaunchKind) params.set("kind", normalizedLaunchKind);
+        if (query.trim()) params.set("search", query.trim());
+      }
+
+      const suffix = params.toString();
+      return suffix ? `/build?${suffix}` : "/build";
+    };
+
     const autocompleteRoots = document.querySelectorAll("[data-autocomplete-root]");
+
+    const resolveSuggestedPart = async ({ query, launchKind }) => {
+      const params = new URLSearchParams({ q: query, limit: "1" });
+      if (launchKind) params.set("kind", launchKind);
+
+      const response = await fetch(`/api/catalog/search?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+
+      const payload = await response.json();
+      return payload.suggestions?.[0] ?? null;
+    };
+
+    document.querySelectorAll("[data-suggested-part]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const query = button.dataset.launchQuery ?? "";
+        const launchKind = button.dataset.launchKind ?? "";
+
+        try {
+          const suggestion = await resolveSuggestedPart({ query, launchKind });
+          if (suggestion) {
+            window.location.href = toBuildUrl({
+              selectedKind: suggestion.kind,
+              selectedId: suggestion.id,
+              query: suggestion.displayName,
+              launchKind
+            });
+            return;
+          }
+        } catch (error) {
+          // Fall back to query-state handoff if the lookup path is unavailable.
+        }
+
+        window.location.href = toBuildUrl({ query, launchKind });
+      });
+    });
 
     autocompleteRoots.forEach((autocompleteRoot) => {
       const input = autocompleteRoot.querySelector("[data-autocomplete-input]");
@@ -397,11 +404,13 @@ const protocol = [
       const status = autocompleteRoot.querySelector("[data-autocomplete-status]");
       const results = autocompleteRoot.querySelector("[data-autocomplete-results]");
       const kind = autocompleteRoot.dataset.kind;
+      const launchKind = autocompleteRoot.dataset.launchKind ?? kind ?? "";
 
       if (!input || !panel || !status || !results) return;
 
       let debounceTimer;
       let activeRequest = 0;
+      let activeSuggestions = [];
 
       const closePanel = () => {
         panel.classList.add("hidden");
@@ -409,6 +418,16 @@ const protocol = [
 
       const openPanel = () => {
         panel.classList.remove("hidden");
+      };
+
+      const navigateToSuggestion = (suggestion) => {
+        input.value = suggestion.displayName;
+        window.location.href = toBuildUrl({
+          selectedKind: suggestion.kind,
+          selectedId: suggestion.id,
+          query: suggestion.displayName,
+          launchKind
+        });
       };
 
       const renderState = (message) => {
@@ -422,15 +441,14 @@ const protocol = [
         suggestions.forEach((suggestion) => {
           const button = document.createElement("button");
           button.type = "button";
-          button.className = "grid gap-1 border-t border-line px-4 py-3 text-left transition first:border-t-0 hover:bg-panel-2";
+          button.className = "autocomplete-result";
           button.innerHTML = `
             <strong class="text-sm font-semibold text-ink">${suggestion.displayName}</strong>
             <span class="font-mono text-[0.7rem] uppercase tracking-[0.16em] text-ink-faint">${suggestion.kind} / ${suggestion.sourceSheet} #${suggestion.rowNumber}</span>
           `;
           button.addEventListener("pointerdown", (event) => {
             event.preventDefault();
-            input.value = suggestion.displayName;
-            closePanel();
+            navigateToSuggestion(suggestion);
           });
           results.append(button);
         });
@@ -439,6 +457,7 @@ const protocol = [
       const fetchSuggestions = async () => {
         const query = input.value.trim();
         if (query.length < 3) {
+          activeSuggestions = [];
           closePanel();
           return;
         }
@@ -460,6 +479,8 @@ const protocol = [
           if (requestId !== activeRequest) return;
 
           const suggestions = payload.suggestions ?? [];
+          activeSuggestions = suggestions;
+
           if (!suggestions.length) {
             renderState("No matching components found.");
             return;
@@ -482,6 +503,27 @@ const protocol = [
         if (input.value.trim().length >= 3) {
           void fetchSuggestions();
         }
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+
+        if (activeSuggestions[0]) {
+          navigateToSuggestion(activeSuggestions[0]);
+          return;
+        }
+
+        const query = input.value.trim();
+        if (!query) return;
+        window.location.href = toBuildUrl({ query, launchKind });
+      });
+
+      autocompleteRoot.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = input.value.trim();
+        if (!query) return;
+        window.location.href = toBuildUrl({ query, launchKind });
       });
 
       input.addEventListener("blur", () => {

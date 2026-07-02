@@ -252,9 +252,24 @@ function rowToGpu(row: Record<string, unknown>): GpuPart {
 }
 
 function rowToGenericPart(row: Record<string, unknown>): GenericPart {
+  const specs = JSON.parse(String(row.specs_json ?? "{}")) as Record<string, string>;
+  const dimensions = JSON.parse(String(row.dimensions_json ?? "{}")) as Record<string, number>;
+  const kind = String(row.kind ?? "unknown") as PartKind;
+  const psuFormFactor = String(row.psu_form_factor ?? "").trim();
+  const motherboardFormFactor = String(row.motherboard_form_factor ?? "").trim();
+
+  mergeNumber(dimensions, "cooler_height", row.cooler_height_mm);
+  mergeNumber(dimensions, "wattage", row.psu_wattage);
+  mergeNumber(dimensions, "ram_height", row.ram_height_mm);
+  mergeNumber(dimensions, "height_incl_contact_pins", row.ram_height_mm);
+  mergeNumber(dimensions, "fan_size", row.fan_size_mm);
+
+  if (psuFormFactor && !specs.form_factor) specs.form_factor = psuFormFactor;
+  if (motherboardFormFactor && !specs.form_factor) specs.form_factor = motherboardFormFactor;
+
   return {
     id: String(row.id),
-    kind: String(row.kind ?? "unknown") as PartKind,
+    kind,
     sourceSheet: String(row.source_sheet),
     rowNumber: Number(row.source_row_number ?? row.row_number),
     brand: String(row.brand ?? ""),
@@ -263,12 +278,17 @@ function rowToGenericPart(row: Record<string, unknown>): GenericPart {
     status: String(row.status ?? ""),
     sellerUrl: String(row.seller_url ?? ""),
     productUrl: String(row.product_url ?? ""),
-    specs: JSON.parse(String(row.specs_json ?? "{}")) as Record<string, string>,
-    dimensions: JSON.parse(String(row.dimensions_json ?? "{}")) as Record<string, number>,
+    specs,
+    dimensions,
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>,
     links: JSON.parse(String(row.links_json ?? "{}")) as Record<string, string>
   };
+}
+
+function mergeNumber(target: Record<string, number>, key: string, value: unknown) {
+  const number = nullableNumber(value);
+  if (number !== null && target[key] === undefined) target[key] = number;
 }
 
 function nullableNumber(value: unknown) {

@@ -4,7 +4,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { checkCaseGpuCompatibility } from "../lib/compatibility";
 import type {
   CasePart,
-  CompatibilityIssue,
   CompatibilityResult,
   FitVerdict,
   GenericPart,
@@ -17,6 +16,16 @@ type SelectedIds = Partial<Record<SelectableKind, string>>;
 type PartRecord = GenericPart | CasePart | GpuPart;
 type DisplayVerdict = FitVerdict | "unscored";
 type BuildStatus = FitVerdict | "in-progress";
+type FitmentCheck = {
+  verdict: DisplayVerdict;
+  message: string;
+  cellIndex?: number;
+};
+type FitmentSummary = {
+  verdict: DisplayVerdict;
+  messages: string[];
+  highlightCellIndex: number | null;
+};
 type SlotDescriptor = {
   kind: SelectableKind;
   label: string;
@@ -41,6 +50,10 @@ type CandidateRow = {
   actionLabel: string;
   actionTone: "add" | "remove";
   source: PartRecord;
+};
+type SlotSpec = {
+  label: string;
+  value: string;
 };
 type CatalogResponse = {
   source: string;
@@ -79,6 +92,35 @@ const slotOrder: SlotDescriptor[] = [
 const tabOrder: SelectableKind[] = ["gpu", "cpu-cooler", "psu", "case", "motherboard", "ram"];
 const pageSize = 25;
 const genericKinds = new Set<SelectableKind>(["psu", "cpu-cooler", "motherboard", "ram"]);
+const psuTokenAliases: Record<string, string> = {
+  sfx: "sfx",
+  sfxl: "sfxl",
+  flexatx: "flexatx",
+  flex: "flexatx",
+  atx: "atx",
+  tfx: "tfx",
+  dcatx: "dcatx",
+  dc: "dcatx",
+  external: "external",
+  custom: "custom",
+  "1u": "1u"
+};
+const motherboardTokenAliases: Record<string, string> = {
+  mitx: "mitx",
+  miniitx: "mitx",
+  matx: "matx",
+  microatx: "matx",
+  mdtx: "mdtx",
+  minidtx: "mdtx",
+  atx: "atx",
+  eatx: "eatx",
+  mstx: "mstx",
+  ministx: "mstx",
+  ssiceb: "ssiceb",
+  ssieeb: "ssieeb",
+  xlatx: "xlatx",
+  custom: "custom"
+};
 const selectedIds = ref<SelectedIds>({});
 const activeKind = ref<SelectableKind>("gpu");
 const search = ref("");
@@ -113,17 +155,57 @@ const activeGpu = computed(() => {
   const part = partIndex.value.get(id);
   return part?.kind === "gpu" ? part : null;
 });
+const activeCpuCooler = computed(() => {
+  const id = selectedIds.value["cpu-cooler"];
+  if (!id) return null;
+  const part = partIndex.value.get(id);
+  return part?.kind === "cpu-cooler" ? part : null;
+});
+const activePsu = computed(() => {
+  const id = selectedIds.value.psu;
+  if (!id) return null;
+  const part = partIndex.value.get(id);
+  return part?.kind === "psu" ? part : null;
+});
+const activeMotherboard = computed(() => {
+  const id = selectedIds.value.motherboard;
+  if (!id) return null;
+  const part = partIndex.value.get(id);
+  return part?.kind === "motherboard" ? part : null;
+});
+const activeRam = computed(() => {
+  const id = selectedIds.value.ram;
+  if (!id) return null;
+  const part = partIndex.value.get(id);
+  return part?.kind === "ram" ? part : null;
+});
 const compatibility = computed<CompatibilityResult | null>(() => {
   if (!activeCase.value || !activeGpu.value) return null;
   return checkCaseGpuCompatibility(activeCase.value, activeGpu.value);
 });
-const buildStatus = computed<BuildStatus>(() => compatibility.value?.verdict ?? "in-progress");
+const selectedFitments = computed(() =>
+  slotOrder
+    .map(({ kind }) => {
+      const id = selectedIds.value[kind];
+      const part = id ? partIndex.value.get(id) : null;
+      return part ? { kind, summary: evaluateCandidateFitment(part) } : null;
+    })
+    .filter((entry): entry is { kind: SelectableKind; summary: FitmentSummary } => Boolean(entry))
+);
+const buildStatus = computed<BuildStatus>(() => {
+  const verdicts = selectedFitments.value
+    .map(({ summary }) => summary.verdict)
+    .filter((verdict): verdict is FitVerdict => verdict !== "unscored");
+  if (verdicts.includes("fail")) return "fail";
+  if (verdicts.includes("conditional")) return "conditional";
+  return verdicts.length && activeCase.value && activeGpu.value ? "pass" : "in-progress";
+});
 const buildStatusLabel = computed(() => {
   if (buildStatus.value === "in-progress") return "IN PROGRESS";
   return buildStatus.value.toUpperCase();
 });
 const buildStatusCopy = computed(() => {
-  if (buildStatus.value === "in-progress") return "Select a case and a GPU to evaluate fitment.";
+  if (buildStatus.value === "in-progress") return "";
   if (buildStatus.value === "pass") return "Known dimensions fit within the active build.";
   if (buildStatus.value === "conditional") return "This build has warnings or uncertain fitment data.";
   return "This build contains at least one known hard conflict.";
@@ -183,12 +265,14 @@ const selectedSlots = computed<ResolvedSelection[]>(() =>
 const buildIssues = computed(() => {
   const sections: Array<{ kind: SelectableKind; issues: string[] }> = [];
 
-  if (activeGpu.value && compatibility.value?.issues.length) {
-    sections.push({
-      kind: "gpu",
-      issues: compatibility.value.issues.map((issue) => issue.message)
+  selectedFitments.value
+    .filter(({ summary }) => summary.verdict !== "pass" && summary.verdict !== "unscored" && summary.messages.length)
+    .forEach(({ kind, summary }) => {
+      sections.push({
+        kind,
+        issues: summary.messages
+      });
     });
-  }
 
   if (selectedIds.value.case && !activeCase.value) {
     sections.push({
@@ -224,14 +308,14 @@ const candidateRows = computed<CandidateRow[]>(() => {
         ? localGpuCandidates.value.map((part) => buildGpuRow(part))
         : (genericCatalog.value?.parts ?? []).map((part) => buildGenericRow(part as GenericPart & { kind: SelectableKind }));
 
-  if (activeKind.value === "case" || activeKind.value === "gpu") {
-    rows.sort((a, b) => {
-      const verdictDelta = verdictRank(a.verdict) - verdictRank(b.verdict);
-      if (verdictDelta !== 0) return verdictDelta;
-      if (a.selected !== b.selected) return a.selected ? -1 : 1;
-      return a.title.localeCompare(b.title);
-    });
+  rows.sort((a, b) => {
+    const verdictDelta = verdictRank(a.verdict) - verdictRank(b.verdict);
+    if (verdictDelta !== 0) return verdictDelta;
+    if (a.selected !== b.selected) return a.selected ? -1 : 1;
+    return a.title.localeCompare(b.title);
+  });
 
+  if (activeKind.value === "case" || activeKind.value === "gpu") {
     const start = (page.value - 1) * pageSize;
     const end = start + pageSize;
     return rows.slice(start, end);
@@ -518,16 +602,22 @@ function verdictCopy(verdict: DisplayVerdict) {
   return "Not yet evaluated";
 }
 
-function slotVerdict(kind: SelectableKind): DisplayVerdict {
-  if (kind === "gpu" && activeGpu.value && compatibility.value) return compatibility.value.verdict;
-  if (kind === "case" && activeCase.value) return "pass";
-  if (genericKinds.has(kind) && selectedIds.value[kind]) return "conditional";
+function slotVerdict(kind: SelectableKind, part: PartRecord | null = null): DisplayVerdict {
+  if (part) {
+    const summary = evaluateCandidateFitment(part);
+    if (summary.verdict !== "unscored") return summary.verdict;
+    if (kind === "case") return "pass";
+  }
   return "unscored";
 }
 
 function slotNote(kind: SelectableKind) {
-  if (kind === "gpu" && compatibility.value?.issues.length) {
-    return firstIssue(compatibility.value.issues);
+  const id = selectedIds.value[kind];
+  const part = id ? partIndex.value.get(id) : null;
+  const summary = part ? evaluateCandidateFitment(part) : null;
+
+  if (summary?.messages.length && summary.verdict !== "pass") {
+    return summary.messages[0];
   }
 
   if (kind === "psu" && activeCase.value?.psu) {
@@ -538,17 +628,19 @@ function slotNote(kind: SelectableKind) {
     return `Constraint: max ${formatValue(activeCase.value.dimensions.cpuCoolerHeightMm, "mm")}`;
   }
 
-  if (genericKinds.has(kind) && selectedIds.value[kind]) {
-    return "Selection stored in the build, fitment logic for this slot lands in a later layer.";
-  }
-
   return "";
 }
 
 function displayTitle(part: PartRecord | null) {
   if (!part) return "Missing catalog record";
   if (part.kind === "case") return `${part.seller} ${part.name}`.trim();
-  if (part.kind === "gpu") return `${part.brand} ${part.model || part.name}`.trim();
+  if (part.kind === "gpu") {
+    const gpuTokens = [part.brand, part.model, part.name]
+      .map((value) => value.trim())
+      .filter((value) => value && value.toLowerCase() !== "gpu");
+    const uniqueTokens = gpuTokens.filter((value, index) => gpuTokens.indexOf(value) === index);
+    return uniqueTokens.join(" ").trim() || part.chipset || part.id;
+  }
   return part.displayName || [part.brand, part.name].filter(Boolean).join(" ").trim() || part.id;
 }
 
@@ -558,14 +650,126 @@ function displaySubtitle(part: PartRecord | null) {
     return part.dimensions.volumeL ? `${formatValue(part.dimensions.volumeL, "L")} volume` : part.style || part.sourceSheet;
   }
   if (part.kind === "gpu") {
-    return part.chipset || `${formatValue(part.tdpW, "W")} TDP`;
+    return part.chipset || (part.tdpW ? `${formatValue(part.tdpW, "W")} TDP` : `${part.sourceSheet} #${part.rowNumber}`);
   }
-  return `${part.sourceSheet} #${part.rowNumber}`;
+  if (part.kind === "cpu-cooler") {
+    return [specValue(part, ["type"]), "CPU cooler"].filter(Boolean).join(" / ");
+  }
+  if (part.kind === "psu") {
+    return [specValue(part, ["form_factor"]), specValue(part, ["80_plus_rating"])].filter(Boolean).join(" / ") || "Power supply";
+  }
+  if (part.kind === "motherboard") {
+    return [motherboardFormFactor(part), specValue(part, ["socket", "chipset"])].filter(Boolean).join(" / ");
+  }
+  if (part.kind === "ram") {
+    return specValue(part, ["memory_type"]) || "Memory";
+  }
+  return part.kind;
+}
+
+function slotSpecs(kind: SelectableKind, part: PartRecord | null): SlotSpec[] {
+  if (part?.kind === "case") {
+    return [
+      { label: "Volume", value: formatValue(part.dimensions.volumeL, "L") },
+      { label: "GPU max L", value: formatValue(part.dimensions.gpuLengthMm, "mm") },
+      { label: "GPU max T", value: formatValue(part.dimensions.gpuThicknessMm, "mm") },
+      { label: "Slots", value: formatValue(part.dimensions.pcieSlots) },
+      { label: "CPU cooler", value: formatValue(part.dimensions.cpuCoolerHeightMm, "mm") },
+      { label: "PSU", value: part.psu || "—" },
+      { label: "Riser", value: part.gpuRiser || "—" }
+    ];
+  }
+
+  if (part?.kind === "gpu") {
+    return [
+      { label: "Length", value: formatValue(part.dimensions.lengthMm, "mm") },
+      { label: "Width", value: formatValue(part.dimensions.widthMm, "mm") },
+      { label: "Thickness", value: formatValue(part.dimensions.thicknessMm, "mm") },
+      { label: "Slots", value: formatValue(part.dimensions.pcieSlots) },
+      { label: "Power", value: part.pciePins || "—" },
+      { label: "TDP", value: formatValue(part.tdpW, "W") },
+      { label: "Low profile", value: part.lowProfile ? "Yes" : "No" }
+    ];
+  }
+
+  if (part?.kind === "cpu-cooler") {
+    return compactSpecs([
+      ["Height", dimensionValue(part, ["height", "cooler_height"], "mm")],
+      ["Footprint", footprintValue(part, "mm")],
+      ["TDP", dimensionValue(part, ["tdp"], "W")],
+      ["RAM clear", dimensionOrSpecValue(part, ["ram_clearance"], "mm")],
+      ["Fan", specValue(part, ["fan_size"])],
+      ["Type", specValue(part, ["type"])]
+    ]);
+  }
+
+  if (part?.kind === "psu") {
+    return compactSpecs([
+      ["Form factor", specValue(part, ["form_factor", "psu"])],
+      ["Wattage", dimensionValue(part, ["wattage", "watt", "watts"], "W")],
+      ["Fan", dimensionValue(part, ["fan_size"], "mm")],
+      ["Modular", yesNoValue(part, ["modular"])],
+      ["12VHPWR", specValue(part, ["12vhpwr_12v_2x6_connectors"])],
+      ["Rating", specValue(part, ["80_plus_rating"])]
+    ]);
+  }
+
+  if (part?.kind === "motherboard") {
+    return compactSpecs([
+      ["Form factor", motherboardFormFactor(part)],
+      ["Socket", specValue(part, ["socket"])],
+      ["Chipset", specValue(part, ["chipset"])],
+      ["RAM slots", dimensionValue(part, ["ram_slots"])],
+      ["RAM type", specValue(part, ["ram_type"])],
+      ["PCIe x16", specValue(part, ["pcie_x16_slot"])]
+    ]);
+  }
+
+  if (part?.kind === "ram") {
+    return compactSpecs([
+      ["Height", dimensionValue(part, ["height_incl_contact_pins", "height"], "mm")],
+      ["Type", specValue(part, ["memory_type"])],
+      ["RGB", yesNoValue(part, ["rgb"])]
+    ]);
+  }
+
+  if (part) {
+    return compactSpecs(
+      Object.entries(part.raw)
+        .filter(([, value]) => value.trim())
+        .slice(0, 6)
+        .map(([label, value]) => [label, value])
+    );
+  }
+
+  if (kind === "gpu" && activeCase.value) {
+    return [
+      { label: "Max length", value: formatValue(activeCase.value.dimensions.gpuLengthMm, "mm") },
+      { label: "Max thickness", value: formatValue(activeCase.value.dimensions.gpuThicknessMm, "mm") },
+      { label: "Max slots", value: formatValue(activeCase.value.dimensions.pcieSlots) },
+      { label: "Low profile", value: formatValue(activeCase.value.dimensions.lpPcieSlots) }
+    ];
+  }
+
+  if (kind === "psu" && activeCase.value) {
+    return [{ label: "Allowed PSU", value: activeCase.value.psu || "—" }];
+  }
+
+  if (kind === "cpu-cooler" && activeCase.value) {
+    return [{ label: "Max height", value: formatValue(activeCase.value.dimensions.cpuCoolerHeightMm, "mm") }];
+  }
+
+  return [];
 }
 
 function buildCaseRow(part: CasePart): CandidateRow {
   const selected = selectedIds.value.case === part.id;
-  const result = activeGpu.value ? checkCaseGpuCompatibility(part, activeGpu.value) : null;
+  const fitment = evaluateCandidateFitment(part);
+  const note =
+    fitment.messages[0] ||
+    (hasActiveCaseConstraint()
+      ? "No immediate issues in the active fitment rules."
+      : "Select another part to evaluate case-side fitment evidence.");
 
   return {
     id: part.id,
@@ -579,8 +783,8 @@ function buildCaseRow(part: CasePart): CandidateRow {
       formatValue(part.dimensions.gpuThicknessMm, "mm"),
       formatValue(part.dimensions.pcieSlots)
     ],
-    verdict: result?.verdict ?? (activeGpu.value ? "conditional" : "unscored"),
-    note: result ? firstIssue(result.issues) : "Select a GPU to evaluate case-side fitment evidence.",
+    verdict: fitment.verdict,
+    note,
     selected,
     actionLabel: selected ? "Remove" : "Add",
     actionTone: selected ? "remove" : "add",
@@ -590,20 +794,23 @@ function buildCaseRow(part: CasePart): CandidateRow {
 
 function buildGpuRow(part: GpuPart): CandidateRow {
   const selected = selectedIds.value.gpu === part.id;
-  const result = activeCase.value ? checkCaseGpuCompatibility(activeCase.value, part) : null;
+  const fitment = evaluateCandidateFitment(part);
   const lengthCell = formatValue(part.dimensions.lengthMm, "mm");
   const thicknessCell = formatValue(part.dimensions.thicknessMm, "mm");
   const slotsCell = formatValue(part.dimensions.pcieSlots);
+  const note =
+    fitment.messages[0] ||
+    (activeCase.value ? "No immediate issues in the active fitment rules." : "Select a case to expose hard fitment limits and cautionary rows.");
 
   return {
     id: part.id,
     kind: "gpu",
     title: displayTitle(part),
-    subtitle: part.chipset || part.name || "GPU",
+    subtitle: part.chipset || part.sourceSheet,
     details: part.pciePins || "Power connector unknown",
     numericCells: [lengthCell, thicknessCell, slotsCell, formatValue(part.tdpW, "W")],
-    verdict: result?.verdict ?? (activeCase.value ? "conditional" : "unscored"),
-    note: result ? firstIssue(result.issues) : "Select a case to expose hard fitment limits and cautionary rows.",
+    verdict: fitment.verdict,
+    note,
     selected,
     actionLabel: selected ? "Remove" : "Add",
     actionTone: selected ? "remove" : "add",
@@ -613,26 +820,461 @@ function buildGpuRow(part: GpuPart): CandidateRow {
 
 function buildGenericRow(part: GenericPart & { kind: SelectableKind }): CandidateRow {
   const selected = selectedIds.value[part.kind] === part.id;
-  const specs = Object.entries(part.raw)
-    .filter(([, value]) => value.trim())
-    .slice(0, 3)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(" / ");
+  const cells = genericMetricCells(part);
+  const fitment = evaluateCandidateFitment(part);
+  const note = fitment.messages[0] || genericEvidenceNote(part);
 
   return {
     id: part.id,
     kind: part.kind,
     title: displayTitle(part),
-    subtitle: part.status || part.sourceSheet,
-    details: specs || "No structured fitment evidence yet for this slot.",
-    numericCells: [part.sourceSheet, `#${part.rowNumber}`, part.status || "Catalog record", String(part.flags.length)],
-    verdict: "conditional",
-    note: "This slot is stored in URL state today, detailed fitment rules land in a later layer.",
+    subtitle: displaySubtitle(part),
+    details: note,
+    numericCells: cells,
+    verdict: fitment.verdict,
+    note,
     selected,
     actionLabel: selected ? "Remove" : "Add",
     actionTone: selected ? "remove" : "add",
     source: part
   };
+}
+
+function genericMetricCells(part: GenericPart & { kind: SelectableKind }) {
+  if (part.kind === "cpu-cooler") {
+    return [
+      dimensionValue(part, ["height", "cooler_height"], "mm"),
+      footprintValue(part, "mm"),
+      dimensionValue(part, ["tdp"], "W"),
+      specValue(part, ["fan_size"])
+    ];
+  }
+
+  if (part.kind === "psu") {
+    return [
+      specValue(part, ["form_factor", "psu"]),
+      dimensionValue(part, ["wattage", "watt", "watts"], "W"),
+      dimensionValue(part, ["fan_size"], "mm"),
+      specValue(part, ["12vhpwr_12v_2x6_connectors"]) || "—"
+    ];
+  }
+
+  if (part.kind === "motherboard") {
+    return [
+      motherboardFormFactor(part),
+      specValue(part, ["socket"]),
+      specValue(part, ["chipset"]),
+      [dimensionValue(part, ["ram_slots"]), specValue(part, ["ram_type"])].filter((value) => value && value !== "—").join(" / ") || "—"
+    ];
+  }
+
+  if (part.kind === "ram") {
+    return [
+      dimensionValue(part, ["height_incl_contact_pins", "height"], "mm"),
+      specValue(part, ["memory_type"]),
+      yesNoValue(part, ["rgb"])
+    ];
+  }
+
+  return compactSpecs(
+    Object.entries(part.raw)
+      .filter(([, value]) => value.trim())
+      .slice(0, 4)
+      .map(([label, value]) => [label, value])
+  ).map((spec) => spec.value);
+}
+
+function genericEvidenceNote(part: GenericPart & { kind: SelectableKind }) {
+  if (part.kind === "cpu-cooler") {
+    return compactJoin([
+      specValue(part, ["type"]),
+      `Height ${dimensionValue(part, ["height", "cooler_height"], "mm")}`,
+      specValue(part, ["ram_clearance"]) ? `RAM clear ${specValue(part, ["ram_clearance"])}` : ""
+    ]);
+  }
+
+  if (part.kind === "psu") {
+    return compactJoin([
+      specValue(part, ["form_factor", "psu"]),
+      `Wattage ${dimensionValue(part, ["wattage", "watt", "watts"], "W")}`,
+      specValue(part, ["modular"]) ? `Modular ${yesNoValue(part, ["modular"])}` : ""
+    ]);
+  }
+
+  if (part.kind === "motherboard") {
+    return compactJoin([motherboardFormFactor(part), specValue(part, ["socket"]), specValue(part, ["chipset"])]);
+  }
+
+  if (part.kind === "ram") {
+    return compactJoin([
+      specValue(part, ["memory_type"]),
+      `Height ${dimensionValue(part, ["height_incl_contact_pins", "height"], "mm")}`
+    ]);
+  }
+
+  return "Catalog-backed selection for this slot.";
+}
+
+function evaluateCandidateFitment(part: PartRecord): FitmentSummary {
+  const checks: FitmentCheck[] = [];
+
+  if (part.kind === "case") {
+    if (activeGpu.value) checks.push(...evaluateGpuAgainstCase(activeGpu.value, part));
+    if (activeCpuCooler.value) checks.push(evaluateCpuCoolerAgainstCase(activeCpuCooler.value, part));
+    if (activePsu.value) checks.push(evaluatePsuAgainstCase(activePsu.value, part));
+    if (activeMotherboard.value) checks.push(evaluateMotherboardAgainstCase(activeMotherboard.value, part));
+  } else if (part.kind === "gpu") {
+    if (activeCase.value) checks.push(...evaluateGpuAgainstCase(part, activeCase.value));
+  } else if (part.kind === "cpu-cooler") {
+    if (activeCase.value) checks.push(evaluateCpuCoolerAgainstCase(part, activeCase.value));
+    if (activeRam.value) checks.push(evaluateRamAgainstCpuCooler(activeRam.value, part));
+  } else if (part.kind === "psu") {
+    if (activeCase.value) checks.push(evaluatePsuAgainstCase(part, activeCase.value));
+  } else if (part.kind === "motherboard") {
+    if (activeCase.value) checks.push(evaluateMotherboardAgainstCase(part, activeCase.value));
+    if (activeRam.value) checks.push(evaluateRamAgainstMotherboard(activeRam.value, part));
+  } else if (part.kind === "ram") {
+    if (activeMotherboard.value) checks.push(evaluateRamAgainstMotherboard(part, activeMotherboard.value));
+    if (activeCpuCooler.value) checks.push(evaluateRamAgainstCpuCooler(part, activeCpuCooler.value));
+  }
+
+  return summarizeFitmentChecks(checks);
+}
+
+function summarizeFitmentChecks(checks: FitmentCheck[]): FitmentSummary {
+  const messages = checks
+    .filter((check) => check.message && check.verdict !== "pass")
+    .map((check) => check.message);
+  const firstHighlight = checks.find((check) => check.verdict !== "pass" && check.cellIndex !== undefined)?.cellIndex ?? null;
+
+  if (!checks.length) {
+    return {
+      verdict: "unscored",
+      messages: [],
+      highlightCellIndex: null
+    };
+  }
+
+  if (checks.some((check) => check.verdict === "fail")) {
+    return {
+      verdict: "fail",
+      messages,
+      highlightCellIndex: firstHighlight
+    };
+  }
+
+  if (checks.some((check) => check.verdict === "conditional")) {
+    return {
+      verdict: "conditional",
+      messages,
+      highlightCellIndex: firstHighlight
+    };
+  }
+
+  return {
+    verdict: "pass",
+    messages: [],
+    highlightCellIndex: null
+  };
+}
+
+function evaluateGpuAgainstCase(gpu: GpuPart, casePart: CasePart): FitmentCheck[] {
+  const result = checkCaseGpuCompatibility(casePart, gpu);
+  if (!result.issues.length) {
+    return [
+      {
+        verdict: "pass",
+        message: "GPU dimensions fit the case GPU envelope."
+      }
+    ];
+  }
+
+  return result.issues.map((issue) => ({
+    verdict: issue.severity === "error" ? "fail" : "conditional",
+    message: issue.message,
+    cellIndex: gpuIssueCellIndex(issue.code)
+  }));
+}
+
+function evaluateCpuCoolerAgainstCase(cooler: GenericPart, casePart: CasePart): FitmentCheck {
+  const maxHeight = casePart.dimensions.cpuCoolerHeightMm;
+  const coolerHeight = dimensionNumber(cooler, ["height", "cooler_height"]);
+
+  if (!maxHeight) {
+    return {
+      verdict: "conditional",
+      message: "Case CPU cooler height limit is unknown."
+    };
+  }
+
+  if (coolerHeight === null) {
+    return {
+      verdict: "conditional",
+      message: `Cooler height is unknown; case max is ${formatValue(maxHeight, "mm")}.`,
+      cellIndex: 0
+    };
+  }
+
+  if (coolerHeight > maxHeight) {
+    return {
+      verdict: "fail",
+      message: `Cooler height ${formatValue(coolerHeight, "mm")} exceeds case max ${formatValue(maxHeight, "mm")}.`,
+      cellIndex: 0
+    };
+  }
+
+  return {
+    verdict: "pass",
+    message: `Cooler height ${formatValue(coolerHeight, "mm")} fits case max ${formatValue(maxHeight, "mm")}.`
+  };
+}
+
+function evaluatePsuAgainstCase(psu: GenericPart, casePart: CasePart): FitmentCheck {
+  const caseSupport = casePart.psu;
+  const psuFormFactor = specValue(psu, ["form_factor", "psu"]);
+  const caseTokens = parseSupportTokens(caseSupport, psuTokenAliases);
+  const psuToken = canonicalToken(psuFormFactor, psuTokenAliases);
+
+  if (!caseTokens.size || !psuToken) {
+    return {
+      verdict: "conditional",
+      message: `PSU form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and PSU form factor is "${psuFormFactor || "unknown"}".`,
+      cellIndex: 0
+    };
+  }
+
+  if (psuToken === "custom" || caseTokens.has("custom")) {
+    return {
+      verdict: "conditional",
+      message: `Custom PSU support requires manual verification (${psuFormFactor} in ${caseSupport}).`,
+      cellIndex: 0
+    };
+  }
+
+  if (caseTokens.has(psuToken)) {
+    return {
+      verdict: "pass",
+      message: `PSU form factor ${psuFormFactor} is supported by case envelope ${caseSupport}.`
+    };
+  }
+
+  return {
+    verdict: "fail",
+    message: `PSU form factor ${psuFormFactor} is not supported by case envelope ${caseSupport}.`,
+    cellIndex: 0
+  };
+}
+
+function evaluateMotherboardAgainstCase(motherboard: GenericPart, casePart: CasePart): FitmentCheck {
+  const caseSupport = casePart.raw.Motherboard || casePart.raw.motherboard || "";
+  const boardFormFactor = motherboardFormFactor(motherboard);
+  const caseTokens = parseSupportTokens(caseSupport, motherboardTokenAliases);
+  const boardToken = canonicalToken(boardFormFactor, motherboardTokenAliases);
+
+  if (!caseTokens.size || !boardToken) {
+    return {
+      verdict: "conditional",
+      message: `Motherboard form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and board form factor is "${boardFormFactor || "unknown"}".`,
+      cellIndex: 0
+    };
+  }
+
+  if (caseTokens.has("custom") || boardToken === "custom") {
+    return {
+      verdict: "conditional",
+      message: `Custom motherboard support requires manual verification (${boardFormFactor} in ${caseSupport}).`,
+      cellIndex: 0
+    };
+  }
+
+  if (caseTokens.has(boardToken)) {
+    return {
+      verdict: "pass",
+      message: `Motherboard form factor ${boardFormFactor} is supported by case envelope ${caseSupport}.`
+    };
+  }
+
+  return {
+    verdict: "fail",
+    message: `Motherboard form factor ${boardFormFactor} is not supported by case envelope ${caseSupport}.`,
+    cellIndex: 0
+  };
+}
+
+function evaluateRamAgainstMotherboard(ram: GenericPart, motherboard: GenericPart): FitmentCheck {
+  const ramType = specValue(ram, ["memory_type"]);
+  const motherboardRamType = specValue(motherboard, ["ram_type"]);
+
+  if (!ramType || !motherboardRamType) {
+    return {
+      verdict: "conditional",
+      message: `RAM type cannot be fully checked; RAM is "${ramType || "unknown"}" and motherboard requires "${motherboardRamType || "unknown"}".`,
+      cellIndex: 1
+    };
+  }
+
+  if (normalizeSpecToken(ramType) === normalizeSpecToken(motherboardRamType)) {
+    return {
+      verdict: "pass",
+      message: `${ramType} RAM matches motherboard memory type ${motherboardRamType}.`
+    };
+  }
+
+  return {
+    verdict: "fail",
+    message: `${ramType} RAM does not match motherboard memory type ${motherboardRamType}.`,
+    cellIndex: 1
+  };
+}
+
+function evaluateRamAgainstCpuCooler(ram: GenericPart, cooler: GenericPart): FitmentCheck {
+  const ramHeight = dimensionNumber(ram, ["height_incl_contact_pins", "height"]);
+  const clearanceText = specValue(cooler, ["ram_clearance"]);
+  const clearance = dimensionOrSpecNumber(cooler, ["ram_clearance"]);
+
+  if (/no\s*limit/i.test(clearanceText)) {
+    return {
+      verdict: "pass",
+      message: "CPU cooler lists no RAM height limit."
+    };
+  }
+
+  if (ramHeight === null || clearance === null) {
+    return {
+      verdict: "conditional",
+      message: `RAM clearance cannot be fully checked; RAM height is ${formatValue(ramHeight, "mm")} and cooler clearance is ${clearanceText || "unknown"}.`,
+      cellIndex: 0
+    };
+  }
+
+  if (ramHeight > clearance) {
+    return {
+      verdict: "fail",
+      message: `RAM height ${formatValue(ramHeight, "mm")} exceeds CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
+      cellIndex: 0
+    };
+  }
+
+  return {
+    verdict: "pass",
+    message: `RAM height ${formatValue(ramHeight, "mm")} fits CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`
+  };
+}
+
+function hasActiveCaseConstraint() {
+  return Boolean(activeGpu.value || activeCpuCooler.value || activePsu.value || activeMotherboard.value);
+}
+
+function compactSpecs(entries: Array<[string, string]>): SlotSpec[] {
+  return entries
+    .map(([label, value]) => ({ label, value: emptyToDash(value) }))
+    .filter((spec) => spec.value !== "—");
+}
+
+function compactJoin(values: string[]) {
+  return values.filter((value) => value && value !== "—").join(" / ") || "Catalog-backed selection for this slot.";
+}
+
+function specValue(part: GenericPart, keys: string[]) {
+  for (const key of keys) {
+    const value = part.specs[key]?.trim() || part.raw[key]?.trim();
+    if (value && !isBlankSpec(value)) return value;
+  }
+  return "";
+}
+
+function dimensionValue(part: GenericPart, keys: string[], unit = "") {
+  for (const key of keys) {
+    const value = part.dimensions[key];
+    if (value !== undefined) return formatValue(value, unit);
+  }
+  return "—";
+}
+
+function dimensionNumber(part: GenericPart, keys: string[]) {
+  for (const key of keys) {
+    const value = part.dimensions[key];
+    if (value !== undefined) return value;
+  }
+  return null;
+}
+
+function dimensionOrSpecValue(part: GenericPart, keys: string[], unit = "") {
+  const dimension = dimensionValue(part, keys, unit);
+  if (dimension !== "—") return dimension;
+  return specValue(part, keys) || "—";
+}
+
+function footprintValue(part: GenericPart, unit = "") {
+  const length = dimensionValue(part, ["length"], unit);
+  const width = dimensionValue(part, ["width"], unit);
+  if (length === "—" && width === "—") return "—";
+  return `${length} x ${width}`;
+}
+
+function yesNoValue(part: GenericPart, keys: string[]) {
+  const value = specValue(part, keys).toLowerCase();
+  if (!value) return "—";
+  if (["y", "yes", "true", "1"].includes(value)) return "Yes";
+  if (["n", "no", "false", "0"].includes(value)) return "No";
+  return specValue(part, keys);
+}
+
+function parseSupportTokens(value: string, aliases: Record<string, string>) {
+  const tokens = new Set<string>();
+  value
+    .replace(/\([^)]*\)/g, "")
+    .split(/[\/,+]/)
+    .map((token) => canonicalToken(token, aliases))
+    .filter(Boolean)
+    .forEach((token) => tokens.add(token));
+  return tokens;
+}
+
+function canonicalToken(value: string, aliases: Record<string, string>) {
+  const normalized = normalizeSpecToken(value);
+  return aliases[normalized] ?? "";
+}
+
+function normalizeSpecToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function dimensionOrSpecNumber(part: GenericPart, keys: string[]) {
+  const dimension = dimensionNumber(part, keys);
+  if (dimension !== null) return dimension;
+
+  for (const key of keys) {
+    const value = specValue(part, [key]);
+    const match = value.match(/-?\d+(?:\.\d+)?/);
+    if (match) return Number(match[0]);
+  }
+
+  return null;
+}
+
+function gpuIssueCellIndex(code: string) {
+  if (code.includes("gpuLengthMm")) return 0;
+  if (code.includes("gpuThicknessMm")) return 1;
+  if (code.includes("pcieSlots")) return 2;
+  return undefined;
+}
+
+function motherboardFormFactor(part: GenericPart) {
+  const explicit = specValue(part, ["form_factor"]);
+  if (explicit) return explicit;
+  const source = part.sourceSheet.toLowerCase();
+  if (source.includes("mitx")) return "mITX";
+  if (source.includes("matx")) return "mATX";
+  return "—";
+}
+
+function emptyToDash(value: string) {
+  return value && !isBlankSpec(value) ? value : "—";
+}
+
+function isBlankSpec(value: string) {
+  return ["", "-", "?", "n/a", "na", "tbd"].includes(value.trim().toLowerCase());
 }
 
 function formatValue(value: number | null | undefined, unit = "") {
@@ -641,19 +1283,11 @@ function formatValue(value: number | null | undefined, unit = "") {
   return `${formatted}${unit}`;
 }
 
-function firstIssue(issues: CompatibilityIssue[]) {
-  return issues[0]?.message ?? "No immediate issues in the active fitment rules.";
-}
-
 function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   if (!value) return 0.34;
   return Math.max(0.12, Math.min(0.94, value / ceiling));
 }
 
-function systemPath() {
-  if (typeof window === "undefined") return "/build";
-  return `${window.location.host}${window.location.pathname}${window.location.search}`;
-}
 </script>
 
 <template>
@@ -694,25 +1328,6 @@ function systemPath() {
       </div>
     </header>
 
-    <div class="system-bar">
-      <div class="system-bar__inner">
-        <div class="system-link">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9.5 14.5l-2 2a3 3 0 01-4.2-4.2l3.2-3.2a3 3 0 014.2 0" />
-            <path d="M14.5 9.5l2-2a3 3 0 114.2 4.2l-3.2 3.2a3 3 0 01-4.2 0" />
-            <path d="M8.8 15.2l6.4-6.4" />
-          </svg>
-          <span>{{ systemPath() }}</span>
-        </div>
-
-        <div class="system-state">
-          <span :class="['system-state__dot', `system-state__dot--${buildStatus === 'in-progress' ? 'conditional' : buildStatus}`]"></span>
-          <span>{{ buildStatus === "fail" ? "Conflict" : buildStatus === "conditional" ? "Warning" : buildStatus === "pass" ? "Clear" : "Draft" }}</span>
-          <span>v2.0.4-build</span>
-        </div>
-      </div>
-    </div>
-
     <main class="workspace">
       <aside class="sidebar">
         <div class="sidebar__header">
@@ -721,7 +1336,7 @@ function systemPath() {
             Compatibility status:
             <strong :class="`text-${buildStatus === 'in-progress' ? 'conditional' : buildStatus}`">{{ buildStatusLabel }}</strong>
           </p>
-          <span class="sidebar__summary">{{ buildStatusCopy }}</span>
+          <span v-if="buildStatusCopy" class="sidebar__summary">{{ buildStatusCopy }}</span>
         </div>
 
         <div class="slot-stack">
@@ -730,7 +1345,7 @@ function systemPath() {
             :key="slot.kind"
             :class="[
               'slot-card',
-              `slot-card--${slotVerdict(slot.kind)}`,
+              `slot-card--${slotVerdict(slot.kind, slot.part)}`,
               {
                 'slot-card--empty': !slot.id,
                 'slot-card--unresolved': slot.state === 'unresolved'
@@ -739,35 +1354,46 @@ function systemPath() {
           >
             <div class="slot-card__top">
               <span class="slot-card__label">{{ slotOrder.find((entry) => entry.kind === slot.kind)?.label }}</span>
-              <span v-if="slot.id" :class="['badge', `badge--${slotVerdict(slot.kind)}`]">
-                {{ verdictCopy(slotVerdict(slot.kind)) }}
-              </span>
+              <div v-if="slot.id" class="slot-card__top-actions">
+                <span :class="['badge', `badge--${slotVerdict(slot.kind, slot.part)}`]">
+                  {{ verdictCopy(slotVerdict(slot.kind, slot.part)) }}
+                </span>
+                <button class="slot-card__clear" type="button" :aria-label="`Clear ${slot.kind}`" title="Clear" @click="clearSlot(slot.kind)">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <template v-if="slot.id && slot.part">
               <h2>{{ displayTitle(slot.part) }}</h2>
               <p class="slot-card__meta">{{ displaySubtitle(slot.part) }}</p>
               <p v-if="slotNote(slot.kind)" class="slot-card__note">{{ slotNote(slot.kind) }}</p>
+              <dl v-if="slotSpecs(slot.kind, slot.part).length" class="slot-card__specs">
+                <div v-for="spec in slotSpecs(slot.kind, slot.part)" :key="`${slot.kind}-${spec.label}`" class="slot-card__spec">
+                  <dt>{{ spec.label }}</dt>
+                  <dd>{{ spec.value }}</dd>
+                </div>
+              </dl>
 
-              <div class="slot-card__actions">
-                <button class="button button--ghost" type="button" @click="openSlot(slot.kind)">Inspect</button>
-                <button class="button button--danger" type="button" @click="clearSlot(slot.kind)">Clear</button>
-              </div>
             </template>
 
             <template v-else-if="slot.id && slot.state === 'unresolved'">
               <h2>Unresolved selection</h2>
               <p class="slot-card__meta">{{ slot.id }}</p>
               <p class="slot-card__note">The id is still preserved in URL state, but the catalog can no longer resolve it.</p>
-              <div class="slot-card__actions">
-                <button class="button button--ghost" type="button" @click="openSlot(slot.kind)">Review slot</button>
-                <button class="button button--danger" type="button" @click="clearSlot(slot.kind)">Clear</button>
-              </div>
             </template>
 
             <template v-else>
               <h2>Empty</h2>
               <p class="slot-card__meta">{{ slotNote(slot.kind) || "No part selected yet." }}</p>
+              <dl v-if="slotSpecs(slot.kind, null).length" class="slot-card__specs">
+                <div v-for="spec in slotSpecs(slot.kind, null)" :key="`${slot.kind}-${spec.label}`" class="slot-card__spec">
+                  <dt>{{ spec.label }}</dt>
+                  <dd>{{ spec.value }}</dd>
+                </div>
+              </dl>
               <div class="slot-card__actions">
                 <button class="button button--ghost" type="button" @click="openSlot(slot.kind)">
                   {{ slotOrder.find((entry) => entry.kind === slot.kind)?.actionLabel }}
@@ -855,13 +1481,44 @@ function systemPath() {
                   <th>PCIe slots</th>
                   <th>Action</th>
                 </tr>
+                <tr v-else-if="activeKind === 'cpu-cooler'">
+                  <th>Status</th>
+                  <th>Name</th>
+                  <th>Height</th>
+                  <th>Footprint</th>
+                  <th>TDP</th>
+                  <th>Fan</th>
+                  <th>Action</th>
+                </tr>
+                <tr v-else-if="activeKind === 'psu'">
+                  <th>Status</th>
+                  <th>Name</th>
+                  <th>Form factor</th>
+                  <th>Wattage</th>
+                  <th>Fan</th>
+                  <th>12VHPWR</th>
+                  <th>Action</th>
+                </tr>
+                <tr v-else-if="activeKind === 'motherboard'">
+                  <th>Status</th>
+                  <th>Name</th>
+                  <th>Form factor</th>
+                  <th>Socket</th>
+                  <th>Chipset</th>
+                  <th>RAM</th>
+                  <th>Action</th>
+                </tr>
+                <tr v-else-if="activeKind === 'ram'">
+                  <th>Status</th>
+                  <th>Name</th>
+                  <th>Height</th>
+                  <th>Type</th>
+                  <th>RGB</th>
+                  <th>Action</th>
+                </tr>
                 <tr v-else>
                   <th>Status</th>
-                  <th>Part</th>
-                  <th>Source</th>
-                  <th>Row</th>
-                  <th>Status</th>
-                  <th>Flags</th>
+                  <th>Name</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -954,14 +1611,12 @@ function systemPath() {
   background-size: 40px 40px, 40px 40px, auto;
 }
 
-.topbar,
-.system-bar {
+.topbar {
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.94);
 }
 
 .topbar__inner,
-.system-bar__inner,
 .workspace {
   max-width: 1280px;
   margin: 0 auto;
@@ -1039,46 +1694,10 @@ function systemPath() {
   color: var(--ink);
 }
 
-.system-bar__inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.65rem 2rem;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-}
-
-.system-link,
-.system-state {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.system-state__dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 999px;
-}
-
-.system-state__dot--pass {
-  background: var(--accent);
-}
-
-.system-state__dot--conditional {
-  background: #d28c00;
-}
-
-.system-state__dot--fail {
-  background: var(--danger);
-}
-
 .workspace {
   display: grid;
   grid-template-columns: 20rem minmax(0, 1fr);
-  min-height: calc(100vh - 6.6rem);
+  min-height: calc(100vh - 4rem);
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
   background: rgba(248, 249, 255, 0.9);
@@ -1152,6 +1771,7 @@ function systemPath() {
 
 .slot-card__top,
 .slot-card__actions,
+.slot-card__top-actions,
 .main-panel__header,
 .toolbar,
 .table-footer,
@@ -1160,6 +1780,11 @@ function systemPath() {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.slot-card__top-actions {
+  justify-content: flex-end;
+  gap: 0.45rem;
 }
 
 .slot-card__label,
@@ -1175,6 +1800,31 @@ function systemPath() {
 .badge {
   padding: 0.2rem 0.45rem;
   border-radius: 2px;
+}
+
+.slot-card__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: 1px solid #efb0a8;
+  background: transparent;
+  color: var(--danger);
+  padding: 0;
+}
+
+.slot-card__clear:hover {
+  background: var(--danger-soft);
+}
+
+.slot-card__clear svg {
+  width: 0.82rem;
+  height: 0.82rem;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: square;
 }
 
 .badge--pass,
@@ -1209,6 +1859,7 @@ function systemPath() {
 
 .slot-card__meta,
 .slot-card__note,
+.slot-card__spec dd,
 .title-cell span,
 .title-cell small,
 .state-box {
@@ -1220,6 +1871,38 @@ function systemPath() {
   margin: 0.7rem 0 0;
   padding: 0.55rem 0.65rem;
   background: rgba(255, 227, 223, 0.42);
+}
+
+.slot-card__specs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 0.8rem;
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(198, 210, 231, 0.75);
+}
+
+.slot-card__spec {
+  min-width: 0;
+}
+
+.slot-card__spec dt {
+  margin: 0;
+  color: var(--ink);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.slot-card__spec dd {
+  margin: 0.14rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .button,

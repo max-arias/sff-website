@@ -45,6 +45,10 @@ Read these files before making product or UX changes:
 - Selected part identity should use the concrete `sff_parts.id`.
 - Those IDs are currently import-derived, so upstream sheet changes may affect long-term stability.
 
+## Local Development
+
+- Do not start the Astro dev server unless the user explicitly asks for it. It is flaky in this workspace; make changes and use static checks, then let the user run and test the app locally.
+
 ## Contribution Model
 
 - V1 contribution intake is via GitHub issues plus manual review.

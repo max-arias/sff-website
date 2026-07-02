@@ -104,8 +104,13 @@ function firstNonEmptyValue(values: Record<string, string>) {
 }
 
 function normalizeSpecKey(key: string) {
-  return key
-    .trim()
+  const trimmedKey = key.trim();
+  const loweredKey = trimmedKey.toLowerCase();
+
+  if (/^size\s*\(height\)/.test(loweredKey)) return "size_height";
+  if (/^size\s*\(width\)/.test(loweredKey)) return "size_width";
+
+  return trimmedKey
     .toLowerCase()
     .replace(/\([^)]*\)/g, "")
     .replace(/[^a-z0-9]+/g, "_")

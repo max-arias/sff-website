@@ -30,6 +30,15 @@ function spec(part: GenericPart, keys: string[]) {
   return "";
 }
 
+function motherboardFormFactor(part: GenericPart) {
+  const explicit = spec(part, ["form_factor"]);
+  if (explicit) return explicit;
+  const source = part.sourceSheet.toLowerCase();
+  if (source.includes("mitx")) return "mITX";
+  if (source.includes("matx")) return "mATX";
+  return "";
+}
+
 function genericPartInsert(runId: string, part: GenericPart, casePart?: CasePart, gpuPart?: GpuPart) {
   const caseDimensions = casePart?.dimensions;
   const gpuDimensions = gpuPart?.dimensions;
@@ -94,8 +103,8 @@ function genericPartInsert(runId: string, part: GenericPart, casePart?: CasePart
     escapeSql(part.status),
     escapeSql(part.sellerUrl),
     escapeSql(part.productUrl),
-    escapeSql(caseDimensions?.lengthMm ?? gpuDimensions?.lengthMm ?? dim(part, ["case_length", "length"])),
-    escapeSql(caseDimensions?.widthMm ?? gpuDimensions?.widthMm ?? dim(part, ["case_width", "width"])),
+    escapeSql(caseDimensions?.lengthMm ?? gpuDimensions?.lengthMm ?? dim(part, ["case_length", "length", "size_height"])),
+    escapeSql(caseDimensions?.widthMm ?? gpuDimensions?.widthMm ?? dim(part, ["case_width", "width", "size_width"])),
     escapeSql(caseDimensions?.heightMm ?? dim(part, ["case_height", "height"])),
     escapeSql(gpuDimensions?.thicknessMm ?? dim(part, ["thickness", "gpu_height_thickness"])),
     escapeSql(caseDimensions?.volumeL ?? dim(part, ["volume"])),
@@ -123,8 +132,8 @@ function genericPartInsert(runId: string, part: GenericPart, casePart?: CasePart
     escapeSql(dim(part, ["size", "fan_size"])),
     escapeSql(spec(part, ["form_factor", "psu"])),
     escapeSql(dim(part, ["wattage", "watt", "watts"])),
-    escapeSql(spec(part, ["form_factor", "size"])),
-    escapeSql(part.kind === "ram" ? dim(part, ["height"]) : null),
+    escapeSql(part.kind === "motherboard" ? motherboardFormFactor(part) : spec(part, ["form_factor", "size"])),
+    escapeSql(part.kind === "ram" ? dim(part, ["height", "height_incl_contact_pins"]) : null),
     json(part.specs),
     json(part.dimensions),
     json(part.flags),
