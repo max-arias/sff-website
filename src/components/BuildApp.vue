@@ -20,10 +20,12 @@ type FitmentCheck = {
   verdict: DisplayVerdict;
   message: string;
   cellIndex?: number;
+  advisory?: boolean;
 };
 type FitmentSummary = {
   verdict: DisplayVerdict;
   messages: string[];
+  notes: string[];
   highlightCellIndex: number | null;
 };
 type SlotDescriptor = {
@@ -620,6 +622,10 @@ function slotNote(kind: SelectableKind) {
     return summary.messages[0];
   }
 
+  if (summary?.notes.length) {
+    return summary.notes[0];
+  }
+
   if (kind === "psu" && activeCase.value?.psu) {
     return `Constraint: ${activeCase.value.psu}`;
   }
@@ -767,6 +773,7 @@ function buildCaseRow(part: CasePart): CandidateRow {
   const fitment = evaluateCandidateFitment(part);
   const note =
     fitment.messages[0] ||
+    fitment.notes[0] ||
     (hasActiveCaseConstraint()
       ? "No immediate issues in the active fitment rules."
       : "Select another part to evaluate case-side fitment evidence.");
@@ -800,6 +807,7 @@ function buildGpuRow(part: GpuPart): CandidateRow {
   const slotsCell = formatValue(part.dimensions.pcieSlots);
   const note =
     fitment.messages[0] ||
+    fitment.notes[0] ||
     (activeCase.value ? "No immediate issues in the active fitment rules." : "Select a case to expose hard fitment limits and cautionary rows.");
 
   return {
@@ -822,7 +830,7 @@ function buildGenericRow(part: GenericPart & { kind: SelectableKind }): Candidat
   const selected = selectedIds.value[part.kind] === part.id;
   const cells = genericMetricCells(part);
   const fitment = evaluateCandidateFitment(part);
-  const note = fitment.messages[0] || genericEvidenceNote(part);
+  const note = fitment.messages[0] || fitment.notes[0] || genericEvidenceNote(part);
 
   return {
     id: part.id,
@@ -943,30 +951,35 @@ function evaluateCandidateFitment(part: PartRecord): FitmentSummary {
 
 function summarizeFitmentChecks(checks: FitmentCheck[]): FitmentSummary {
   const messages = checks
-    .filter((check) => check.message && check.verdict !== "pass")
+    .filter((check) => check.message && check.verdict !== "pass" && !check.advisory)
     .map((check) => check.message);
-  const firstHighlight = checks.find((check) => check.verdict !== "pass" && check.cellIndex !== undefined)?.cellIndex ?? null;
+  const notes = checks.filter((check) => check.advisory && check.message).map((check) => check.message);
+  const firstHighlight =
+    checks.find((check) => check.verdict !== "pass" && !check.advisory && check.cellIndex !== undefined)?.cellIndex ?? null;
 
   if (!checks.length) {
     return {
       verdict: "unscored",
       messages: [],
+      notes: [],
       highlightCellIndex: null
     };
   }
 
-  if (checks.some((check) => check.verdict === "fail")) {
+  if (checks.some((check) => check.verdict === "fail" && !check.advisory)) {
     return {
       verdict: "fail",
       messages,
+      notes,
       highlightCellIndex: firstHighlight
     };
   }
 
-  if (checks.some((check) => check.verdict === "conditional")) {
+  if (checks.some((check) => check.verdict === "conditional" && !check.advisory)) {
     return {
       verdict: "conditional",
       messages,
+      notes,
       highlightCellIndex: firstHighlight
     };
   }
@@ -974,6 +987,7 @@ function summarizeFitmentChecks(checks: FitmentCheck[]): FitmentSummary {
   return {
     verdict: "pass",
     messages: [],
+    notes,
     highlightCellIndex: null
   };
 }
@@ -989,10 +1003,19 @@ function evaluateGpuAgainstCase(gpu: GpuPart, casePart: CasePart): FitmentCheck[
     ];
   }
 
+  const advisoryGpuIssueCodes = new Set([
+    "case-status",
+    "tight-gpuLengthMm",
+    "tight-gpuWidthMm",
+    "tight-gpuThicknessMm",
+    "tight-pcieSlots"
+  ]);
+
   return result.issues.map((issue) => ({
-    verdict: issue.severity === "error" ? "fail" : "conditional",
+    verdict: issue.severity === "error" ? "fail" : advisoryGpuIssueCodes.has(issue.code) ? "pass" : "conditional",
     message: issue.message,
-    cellIndex: gpuIssueCellIndex(issue.code)
+    cellIndex: gpuIssueCellIndex(issue.code),
+    advisory: advisoryGpuIssueCodes.has(issue.code)
   }));
 }
 
@@ -1364,6 +1387,20 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   </svg>
                 </button>
               </div>
+              <div v-else class="slot-card__top-actions">
+                <button
+                  class="slot-card__browse"
+                  type="button"
+                  :aria-label="slotOrder.find((entry) => entry.kind === slot.kind)?.actionLabel"
+                  :title="slotOrder.find((entry) => entry.kind === slot.kind)?.actionLabel"
+                  @click="openSlot(slot.kind)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5" />
+                    <path d="M16 16l5 5" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <template v-if="slot.id && slot.part">
@@ -1394,11 +1431,6 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
                   <dd>{{ spec.value }}</dd>
                 </div>
               </dl>
-              <div class="slot-card__actions">
-                <button class="button button--ghost" type="button" @click="openSlot(slot.kind)">
-                  {{ slotOrder.find((entry) => entry.kind === slot.kind)?.actionLabel }}
-                </button>
-              </div>
             </template>
           </article>
         </div>
@@ -1814,11 +1846,28 @@ function ratioFromLimit(value: number | null | undefined, ceiling: number) {
   padding: 0;
 }
 
+.slot-card__browse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+}
+
+.slot-card__browse:hover {
+  background: rgba(205, 217, 238, 0.28);
+}
+
 .slot-card__clear:hover {
   background: var(--danger-soft);
 }
 
-.slot-card__clear svg {
+.slot-card__clear svg,
+.slot-card__browse svg {
   width: 0.82rem;
   height: 0.82rem;
   stroke: currentColor;
