@@ -23,6 +23,7 @@ const mode = args.has("--remote") ? "--remote" : "--local";
 const dryRun = args.has("--dry-run");
 const seedPath = resolve(String(args.get("--file") || ".data/intake-seed.sql"));
 const chunkDir = resolve(String(args.get("--chunk-dir") || ".data/seed-chunks"));
+const wranglerLogDir = resolve(".wrangler-home", "logs");
 const maxChunkBytes = Number(args.get("--max-chunk-bytes") || 4_000_000);
 
 if (!database || typeof database !== "string") {
@@ -34,6 +35,7 @@ const databaseName = database;
 async function writeChunks() {
   await rm(chunkDir, { recursive: true, force: true });
   await mkdir(chunkDir, { recursive: true });
+  await mkdir(wranglerLogDir, { recursive: true });
 
   const chunks: string[] = [];
   const reader = createInterface({
@@ -75,11 +77,21 @@ async function writeChunks() {
 
 function runWrangler(chunkPath: string) {
   return new Promise<void>((resolvePromise, reject) => {
-    const child: ChildProcess = spawn(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["wrangler", "d1", "execute", databaseName, mode, "--file", chunkPath],
-      { stdio: "inherit" }
-    );
+    const command = process.platform === "win32"
+      ? "cmd.exe"
+      : "npx";
+    const commandArgs = process.platform === "win32"
+      ? ["/d", "/s", "/c", `npx wrangler d1 execute ${databaseName} ${mode} --file ${chunkPath}`]
+      : ["wrangler", "d1", "execute", databaseName, mode, "--file", chunkPath];
+
+    const child: ChildProcess = spawn(command, commandArgs, {
+      stdio: "inherit",
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        WRANGLER_LOG_PATH: wranglerLogDir
+      }
+    });
 
     child.on("error", reject);
     child.on("exit", (code: number | null) => {

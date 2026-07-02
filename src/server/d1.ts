@@ -94,6 +94,30 @@ export async function searchCatalog(event: unknown, rawOptions: Partial<CatalogS
   return searchCatalogRows(event, rawOptions);
 }
 
+export async function loadCatalogPartsByIds(event: unknown, ids: string[]) {
+  void event;
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!uniqueIds.length) {
+    return {
+      source: "d1" as const,
+      parts: [] as GenericPart[]
+    };
+  }
+
+  const db = requireDb();
+  const rows = await db
+    .prepare(`select * from sff_parts where id in (${uniqueIds.map(() => "?").join(", ")})`)
+    .bind(...uniqueIds)
+    .all<Record<string, unknown>>();
+
+  const partsById = new Map((rows.results ?? []).map((row) => [String(row.id), rowToGenericPart(row)]));
+
+  return {
+    source: "d1" as const,
+    parts: uniqueIds.map((id) => partsById.get(id)).filter((part): part is GenericPart => Boolean(part))
+  };
+}
+
 export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQueryOptions> = {}): Promise<{
   parts: GenericPart[];
   source: "d1";

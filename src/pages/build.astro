@@ -1,0 +1,11 @@
+---
+import BuildApp from "../components/BuildApp.vue";
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="SFF Builder | Build"
+  description="A replayable fitment workspace for selecting parts, inspecting constraints, and scanning pass, conditional, and fail rows."
+>
+  <BuildApp client:load />
+</BaseLayout>
