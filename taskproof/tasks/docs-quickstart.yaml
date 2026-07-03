@@ -1,0 +1,15 @@
+# Can an agent verify the fitment-engine UX contract rather than a generic catalog flow?
+specVersion: "0.1"
+id: verdicts-remain-actionable
+goal: "On the build page, inspect the parts table and selected-build panel. Confirm that pass, conditional, and fail verdicts are visible when present, and that rows can still be added rather than blocked by fitment status."
+entryUrl: "http://localhost:4321/build"
+tags: [fitment, ux]
+maxSteps: 25
+maxCostUsd: 1.00
+assertions:
+  - type: dom
+    selector: "table"
+    state: visible
+  - type: dom
+    selector: "button, a"
+    state: visible

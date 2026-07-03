@@ -1,0 +1,16 @@
+# Can an agent enter the canonical stateful build route from the launcher homepage?
+specVersion: "0.1"
+id: launcher-to-build
+goal: "From the homepage, find the way to start building or browse the parts database, then open the canonical build experience."
+entryUrl: "http://localhost:4321"
+maxSteps: 15
+maxCostUsd: 1.00
+passPolicy:
+  k: 3
+  minPasses: 2
+assertions:
+  - type: url
+    pattern: "**/build**"
+  - type: dom
+    selector: "table"
+    state: visible

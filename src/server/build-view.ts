@@ -1,5 +1,12 @@
 import type { APIContext } from "astro";
-import { buildUrl, parseBuildQuery, slotOrder, tabOrder, type BuildQueryState, type SelectableKind } from "../lib/build-state";
+import {
+  buildUrl,
+  parseBuildQuery,
+  slotOrder,
+  tabOrder,
+  type BuildQueryState,
+  type SelectableKind,
+} from "../lib/build-state";
 import { checkCaseGpuCompatibility } from "../lib/compatibility";
 import { loadCatalog, loadCatalogPartsByIds, loadParts, searchCatalog } from "./d1";
 import type { CasePart, FitVerdict, GenericPart, GpuPart } from "../types";
@@ -56,6 +63,24 @@ export interface BuildViewRow {
   highlightCellIndex: number | null;
 }
 
+export interface BuildViewTableHeader {
+  key: string;
+  label: string;
+  sortable: boolean;
+  sortUrl: string;
+  sortDir: "asc" | "desc" | null;
+}
+
+export interface BuildViewNumericFilter {
+  name: "max-volume-l" | "max-gpu-length-mm" | "max-gpu-width-mm" | "max-gpu-height-mm";
+  label: string;
+  unit: "L" | "mm";
+  max: number;
+  step: number;
+  value: number;
+  active: boolean;
+}
+
 export interface BuildView {
   state: BuildQueryState;
   slotOrder: typeof slotOrder;
@@ -66,11 +91,18 @@ export interface BuildView {
   buildStatusCopy: string;
   buildIssues: Array<{ kind: SelectableKind; label: string; issues: string[] }>;
   activeConstraintLabel: string;
-  constraintMeters: Array<{ label: string; value: string; tone: "pass" | "conditional" | "neutral"; ratio: number }>;
+  constraintMeters: Array<{
+    label: string;
+    value: string;
+    tone: "pass" | "conditional" | "neutral";
+    ratio: number;
+  }>;
   kindTabs: Array<{ kind: SelectableKind; href: string; active: boolean }>;
   searchAction: string;
   hiddenInputs: Array<{ name: string; value: string }>;
-  tableHeaders: string[];
+  numericFilters: BuildViewNumericFilter[];
+  clearFiltersUrl: string;
+  tableHeaders: BuildViewTableHeader[];
   rows: BuildViewRow[];
   totalRows: number;
   displayStart: number;
@@ -83,7 +115,8 @@ export interface BuildView {
 
 const pageSize = 25;
 const psuPageSize = 500;
-const psuTierSourceUrl = "https://docs.google.com/spreadsheets/d/1akCHL7Vhzk_EhrpIGkz8zTEvYfLDcaSpZRB6Xt6JWkc/edit";
+const psuTierSourceUrl =
+  "https://docs.google.com/spreadsheets/d/1akCHL7Vhzk_EhrpIGkz8zTEvYfLDcaSpZRB6Xt6JWkc/edit";
 const psuTokenAliases: Record<string, string> = {
   sfx: "sfx",
   sfxl: "sfxl",
@@ -95,7 +128,7 @@ const psuTokenAliases: Record<string, string> = {
   dc: "dcatx",
   external: "external",
   custom: "custom",
-  "1u": "1u"
+  "1u": "1u",
 };
 const motherboardTokenAliases: Record<string, string> = {
   mitx: "mitx",
@@ -111,14 +144,16 @@ const motherboardTokenAliases: Record<string, string> = {
   ssiceb: "ssiceb",
   ssieeb: "ssieeb",
   xlatx: "xlatx",
-  custom: "custom"
+  custom: "custom",
 };
 
 export async function getBuildView(context: APIContext, url: URL): Promise<BuildView> {
   const state = parseBuildQuery(url);
   const selectedIds = state.selectedIds;
   const parts = await loadParts(context);
-  const selectedIdList = slotOrder.map(({ kind }) => selectedIds[kind]).filter((id): id is string => Boolean(id));
+  const selectedIdList = slotOrder
+    .map(({ kind }) => selectedIds[kind])
+    .filter((id): id is string => Boolean(id));
   const lookup = await loadCatalogPartsByIds(context, selectedIdList);
   const partIndex = new Map<string, PartRecord>();
 
@@ -134,9 +169,24 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
   const activePsu = partByKind(partIndex, selectedIds.psu, "psu");
   const activeMotherboard = partByKind(partIndex, selectedIds.motherboard, "motherboard");
   const activeRam = partByKind(partIndex, selectedIds.ram, "ram");
-  const ctx = { state, partIndex, activeCase, activeGpu, activeCpuCooler, activePsu, activeMotherboard, activeRam };
+  const ctx = {
+    state,
+    partIndex,
+    activeCase,
+    activeGpu,
+    activeCpuCooler,
+    activePsu,
+    activeMotherboard,
+    activeRam,
+  };
   const { candidates, totalRows } = await loadCandidates(context, state, parts);
-  const rows = candidates.map((part) => buildRow(ctx, part)).sort((a, b) => rowSort(a, b, state.kind));
+  const sortedRows = candidates
+    .map((part) => buildRow(ctx, part))
+    .sort((a, b) => rowSort(a, b, state));
+  const rows = sortedRows.slice(
+    (state.page - 1) * activePageSize(state.kind),
+    state.page * activePageSize(state.kind),
+  );
   const pageCount = Math.max(1, Math.ceil(totalRows / activePageSize(state.kind)));
   const displayStart = totalRows ? (state.page - 1) * activePageSize(state.kind) + 1 : 0;
   const displayEnd = Math.min(state.page * activePageSize(state.kind), totalRows);
@@ -161,10 +211,22 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
     buildIssues: buildIssues(ctx, selectedFitments),
     activeConstraintLabel: activeConstraintLabel(activeCase, activeGpu),
     constraintMeters: constraintMeters(ctx),
-    kindTabs: tabOrder.map((kind) => ({ kind, href: buildUrl(state, { kind, resetPage: true }), active: kind === state.kind })),
+    kindTabs: tabOrder.map((kind) => ({
+      kind,
+      href: buildUrl(state, { kind, resetPage: true }),
+      active: kind === state.kind,
+    })),
     searchAction: "/build",
     hiddenInputs: searchHiddenInputs(state),
-    tableHeaders: tableHeaders(state.kind),
+    numericFilters: numericFilters(state, parts),
+    clearFiltersUrl: buildUrl(state, {
+      maxVolumeL: null,
+      maxGpuLengthMm: null,
+      maxGpuWidthMm: null,
+      maxGpuHeightMm: null,
+      resetPage: true,
+    }),
+    tableHeaders: tableHeaders(state),
     rows,
     totalRows,
     displayStart,
@@ -172,12 +234,15 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
     pageCount,
     previousUrl: buildUrl(state, { page: Math.max(1, state.page - 1) }),
     nextUrl: buildUrl(state, { page: Math.min(pageCount, state.page + 1) }),
-    psuTierSourceUrl
+    psuTierSourceUrl,
   };
 }
 
-async function loadCandidates(context: APIContext, state: BuildQueryState, parts: Awaited<ReturnType<typeof loadParts>>) {
-  const size = activePageSize(state.kind);
+async function loadCandidates(
+  context: APIContext,
+  state: BuildQueryState,
+  parts: Awaited<ReturnType<typeof loadParts>>,
+) {
   if (state.kind === "case" || state.kind === "gpu") {
     const pool = state.kind === "case" ? parts.cases : parts.gpus;
     const filtered = state.search.trim()
@@ -185,29 +250,63 @@ async function loadCandidates(context: APIContext, state: BuildQueryState, parts
         ? await searchTypedCandidates(context, parts.cases, state.kind, state.search)
         : await searchTypedCandidates(context, parts.gpus, state.kind, state.search)
       : pool;
-    const totalRows = filtered.length;
-    const start = (state.page - 1) * size;
+    const narrowed = applyNumericFilters(filtered, state);
+    const totalRows = narrowed.length;
     return {
       totalRows,
-      candidates: filtered.slice(start, start + size)
+      candidates: narrowed,
     };
   }
 
   const catalog = await loadCatalog(context, {
     kind: state.kind,
-    page: state.page,
-    pageSize: size,
-    search: state.search
+    page: 1,
+    pageSize: 5000,
+    search: state.search,
   });
 
   return {
     totalRows: catalog.summary.filteredTotal,
-    candidates: catalog.parts.filter((part): part is GenericPart & { kind: SelectableKind } => part.kind === state.kind)
+    candidates: catalog.parts.filter(
+      (part): part is GenericPart & { kind: SelectableKind } => part.kind === state.kind,
+    ),
   };
 }
 
-async function searchTypedCandidates<T extends CasePart | GpuPart>(context: APIContext, pool: T[], kind: SelectableKind, query: string) {
-  const ids = new Set((await searchCatalog(context, { query, kind, limit: 1000 })).suggestions.map((suggestion) => suggestion.id));
+function applyNumericFilters(parts: Array<CasePart | GpuPart>, state: BuildQueryState) {
+  return parts.filter((part) => {
+    if (isCasePart(part)) {
+      return withinMax(part.dimensions.volumeL, state.maxVolumeL);
+    }
+
+    if (isGpuPart(part)) {
+      return (
+        withinMax(part.dimensions.lengthMm, state.maxGpuLengthMm) &&
+        withinMax(part.dimensions.widthMm, state.maxGpuWidthMm) &&
+        withinMax(part.dimensions.thicknessMm, state.maxGpuHeightMm)
+      );
+    }
+
+    return true;
+  });
+}
+
+function withinMax(value: number | null | undefined, max: number | null) {
+  if (max === null) return true;
+  return value !== null && value !== undefined && value <= max;
+}
+
+async function searchTypedCandidates<T extends CasePart | GpuPart>(
+  context: APIContext,
+  pool: T[],
+  kind: SelectableKind,
+  query: string,
+) {
+  const ids = new Set(
+    (await searchCatalog(context, { query, kind, limit: 1000 })).suggestions.map(
+      (suggestion) => suggestion.id,
+    ),
+  );
   return pool.filter((part) => ids.has(part.id));
 }
 
@@ -215,7 +314,11 @@ function activePageSize(kind: SelectableKind) {
   return kind === "psu" ? psuPageSize : pageSize;
 }
 
-function partByKind<K extends PartRecord["kind"]>(index: Map<string, PartRecord>, id: string | undefined, kind: K) {
+function partByKind<K extends PartRecord["kind"]>(
+  index: Map<string, PartRecord>,
+  id: string | undefined,
+  kind: K,
+) {
   const part = id ? index.get(id) : null;
   return part?.kind === kind ? (part as Extract<PartRecord, { kind: K }>) : null;
 }
@@ -246,7 +349,7 @@ type EvalContext = {
 function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
   const descriptor = slotOrder.find((slot) => slot.kind === kind)!;
   const id = ctx.state.selectedIds[kind] ?? "";
-  const part = id ? ctx.partIndex.get(id) ?? null : null;
+  const part = id ? (ctx.partIndex.get(id) ?? null) : null;
   const verdict = slotVerdict(ctx, kind, part);
 
   return {
@@ -257,12 +360,15 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
     state: id && !part ? "unresolved" : "resolved",
     title: id ? (part ? displayTitle(part) : "Unresolved selection") : "Empty",
     subtitle: part ? displaySubtitle(part) : id || "",
-    note: id && !part ? "The id is still preserved in URL state, but the catalog can no longer resolve it." : slotNote(ctx, kind),
+    note:
+      id && !part
+        ? "The id is still preserved in URL state, but the catalog can no longer resolve it."
+        : slotNote(ctx, kind),
     verdict,
     verdictCopy: verdictCopy(verdict),
     specs: slotSpecs(ctx, kind, part),
     clearUrl: buildUrl(ctx.state, { clearSlot: kind, resetPage: true }),
-    browseUrl: buildUrl(ctx.state, { kind, resetPage: true })
+    browseUrl: buildUrl(ctx.state, { kind, resetPage: true }),
   };
 }
 
@@ -287,20 +393,53 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     actionTone: selected ? "remove" : "add",
     actionUrl: selected
       ? buildUrl(ctx.state, { clearSlot: kind, resetPage: true })
-      : buildUrl(ctx.state, { selectedIds: { [kind]: part.id }, resetPage: true }),
-    highlightCellIndex: fitment.highlightCellIndex
+      : buildUrl(ctx.state, { selectedIds: { [kind]: part.id }, search: "", resetPage: true }),
+    highlightCellIndex: fitment.highlightCellIndex,
   };
 }
 
-function rowSort(a: BuildViewRow, b: BuildViewRow, kind: SelectableKind) {
+function rowSort(a: BuildViewRow, b: BuildViewRow, state: BuildQueryState) {
+  const direction = state.dir === "desc" ? -1 : 1;
+
+  if (state.sort !== "fitment") {
+    const delta = compareSortValue(sortValue(a, state.sort), sortValue(b, state.sort));
+    if (delta !== 0) return delta * direction;
+  }
+
   const verdictDelta = verdictRank(a.verdict) - verdictRank(b.verdict);
   if (verdictDelta !== 0) return verdictDelta;
-  if (kind === "psu") {
+  if (state.kind === "psu") {
     const tierDelta = psuTierRank(a.cells[0]) - psuTierRank(b.cells[0]);
     if (tierDelta !== 0) return tierDelta;
   }
   if (a.selected !== b.selected) return a.selected ? -1 : 1;
   return a.title.localeCompare(b.title);
+}
+
+function sortValue(row: BuildViewRow, key: string) {
+  if (key === "status") return verdictRank(row.verdict);
+  if (key === "name") return row.title;
+  if (key === "notes") return row.note;
+  const metricMatch = key.match(/^metric-(\d+)$/);
+  if (metricMatch) return row.cells[Number(metricMatch[1])] ?? "";
+  return row.title;
+}
+
+function compareSortValue(a: string | number, b: string | number) {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  const aNumber = numericPrefix(String(a));
+  const bNumber = numericPrefix(String(b));
+  if (aNumber !== null || bNumber !== null) {
+    if (aNumber === null) return 1;
+    if (bNumber === null) return -1;
+    return aNumber - bNumber;
+  }
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function numericPrefix(value: string) {
+  const match = value.match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
 }
 
 function psuTierRank(label: string) {
@@ -311,9 +450,11 @@ function psuTierRank(label: string) {
 function getBuildStatus(
   selectedFitments: Array<{ kind: SelectableKind; summary: FitmentSummary }>,
   activeCase: CasePart | null,
-  activeGpu: GpuPart | null
+  activeGpu: GpuPart | null,
 ): BuildStatus {
-  const verdicts = selectedFitments.map(({ summary }) => summary.verdict).filter((verdict): verdict is FitVerdict => verdict !== "unscored");
+  const verdicts = selectedFitments
+    .map(({ summary }) => summary.verdict)
+    .filter((verdict): verdict is FitVerdict => verdict !== "unscored");
   if (verdicts.includes("fail")) return "fail";
   if (verdicts.includes("conditional")) return "conditional";
   return verdicts.length && activeCase && activeGpu ? "pass" : "in-progress";
@@ -326,13 +467,23 @@ function buildStatusCopy(status: BuildStatus) {
   return "This build contains at least one known hard conflict.";
 }
 
-function buildIssues(ctx: EvalContext, selectedFitments: Array<{ kind: SelectableKind; summary: FitmentSummary }>) {
+function buildIssues(
+  ctx: EvalContext,
+  selectedFitments: Array<{ kind: SelectableKind; summary: FitmentSummary }>,
+) {
   const sections: Array<{ kind: SelectableKind; label: string; issues: string[] }> = [];
 
   selectedFitments
-    .filter(({ summary }) => summary.verdict !== "pass" && summary.verdict !== "unscored" && summary.messages.length)
+    .filter(
+      ({ summary }) =>
+        summary.verdict !== "pass" && summary.verdict !== "unscored" && summary.messages.length,
+    )
     .forEach(({ kind, summary }) => {
-      sections.push({ kind, label: slotOrder.find((slot) => slot.kind === kind)!.label, issues: summary.messages });
+      sections.push({
+        kind,
+        label: slotOrder.find((slot) => slot.kind === kind)!.label,
+        issues: summary.messages,
+      });
     });
 
   slotOrder.forEach(({ kind, label }) => {
@@ -341,7 +492,9 @@ function buildIssues(ctx: EvalContext, selectedFitments: Array<{ kind: Selectabl
       sections.push({
         kind,
         label,
-        issues: [`Selected ${label.toLowerCase()} id "${id}" could not be loaded from the current catalog.`]
+        issues: [
+          `Selected ${label.toLowerCase()} id "${id}" could not be loaded from the current catalog.`,
+        ],
       });
     }
   });
@@ -355,45 +508,227 @@ function searchHiddenInputs(state: BuildQueryState) {
     const value = state.selectedIds[kind];
     if (value) inputs.push({ name: kind, value });
   });
+  if (state.sort !== "fitment") inputs.push({ name: "sort", value: state.sort });
+  if (state.sort !== "fitment" && state.dir === "desc")
+    inputs.push({ name: "dir", value: state.dir });
+  numericFilterInputs(state).forEach((input) => inputs.push(input));
   return inputs;
 }
 
-function tableHeaders(kind: SelectableKind) {
-  if (kind === "gpu") return ["Status", "Model", "Length", "Thickness", "Slots", "Power", "Notes", "Action"];
-  if (kind === "case") return ["Status", "Case", "Volume", "GPU max length", "GPU max thickness", "PCIe slots", "Notes", "Action"];
-  if (kind === "cpu-cooler") return ["Status", "Name", "Height", "Footprint", "TDP", "Fan", "Notes", "Action"];
-  if (kind === "psu") return ["Status", "Name", "Tier", "Form factor", "Wattage", "12VHPWR", "Notes", "Action"];
-  if (kind === "motherboard") return ["Status", "Name", "Form factor", "Socket", "Chipset", "RAM", "Notes", "Action"];
+function numericFilterInputs(state: BuildQueryState) {
+  const inputs: Array<{ name: string; value: string }> = [];
+  if (state.kind === "case" && state.maxVolumeL !== null)
+    inputs.push({ name: "max-volume-l", value: formatQueryNumber(state.maxVolumeL) });
+  if (state.kind === "gpu") {
+    if (state.maxGpuLengthMm !== null)
+      inputs.push({ name: "max-gpu-length-mm", value: formatQueryNumber(state.maxGpuLengthMm) });
+    if (state.maxGpuWidthMm !== null)
+      inputs.push({ name: "max-gpu-width-mm", value: formatQueryNumber(state.maxGpuWidthMm) });
+    if (state.maxGpuHeightMm !== null)
+      inputs.push({ name: "max-gpu-height-mm", value: formatQueryNumber(state.maxGpuHeightMm) });
+  }
+  return inputs;
+}
+
+function numericFilters(
+  state: BuildQueryState,
+  parts: Awaited<ReturnType<typeof loadParts>>,
+): BuildViewNumericFilter[] {
+  if (state.kind === "case") {
+    const max = maxDimension(parts.cases.map((part) => part.dimensions.volumeL));
+    return [makeNumericFilter("max-volume-l", "Max volume", "L", max, 0.5, state.maxVolumeL)];
+  }
+
+  if (state.kind === "gpu") {
+    return [
+      makeNumericFilter(
+        "max-gpu-length-mm",
+        "Max GPU length",
+        "mm",
+        maxDimension(parts.gpus.map((part) => part.dimensions.lengthMm)),
+        1,
+        state.maxGpuLengthMm,
+      ),
+      makeNumericFilter(
+        "max-gpu-width-mm",
+        "Max GPU width",
+        "mm",
+        maxDimension(parts.gpus.map((part) => part.dimensions.widthMm)),
+        1,
+        state.maxGpuWidthMm,
+      ),
+      makeNumericFilter(
+        "max-gpu-height-mm",
+        "Max GPU height",
+        "mm",
+        maxDimension(parts.gpus.map((part) => part.dimensions.thicknessMm)),
+        1,
+        state.maxGpuHeightMm,
+      ),
+    ];
+  }
+
+  return [];
+}
+
+function makeNumericFilter(
+  name: BuildViewNumericFilter["name"],
+  label: string,
+  unit: BuildViewNumericFilter["unit"],
+  max: number,
+  step: number,
+  value: number | null,
+): BuildViewNumericFilter {
+  return { name, label, unit, max, step, value: value ?? max, active: value !== null };
+}
+
+function maxDimension(values: Array<number | null | undefined>) {
+  const max = Math.max(
+    0,
+    ...values.filter((value): value is number => value !== null && value !== undefined),
+  );
+  return Math.ceil(max || 1);
+}
+
+function tableHeaders(state: BuildQueryState): BuildViewTableHeader[] {
+  const labels = tableHeaderLabels(state.kind);
+  return labels.map((label, index) => {
+    const key = headerSortKey(index, labels.length);
+    const sortable = key !== "notes" && key !== "action";
+    const nextDir = state.sort === key && state.dir === "asc" ? "desc" : "asc";
+    return {
+      key,
+      label,
+      sortable,
+      sortUrl: sortable ? buildUrl(state, { sort: key, dir: nextDir, resetPage: true }) : "",
+      sortDir: state.sort === key ? state.dir : null,
+    };
+  });
+}
+
+function tableHeaderLabels(kind: SelectableKind) {
+  if (kind === "gpu")
+    return ["Status", "Model", "Length", "Width", "Height", "Slots", "Power", "Notes", "Action"];
+  if (kind === "case")
+    return [
+      "Status",
+      "Case",
+      "Volume",
+      "GPU max length",
+      "GPU max thickness",
+      "PCIe slots",
+      "Notes",
+      "Action",
+    ];
+  if (kind === "cpu-cooler")
+    return ["Status", "Name", "Height", "Footprint", "TDP", "Fan", "Notes", "Action"];
+  if (kind === "psu")
+    return ["Status", "Name", "Tier", "Form factor", "Wattage", "12VHPWR", "Notes", "Action"];
+  if (kind === "motherboard")
+    return ["Status", "Name", "Form factor", "Socket", "Chipset", "RAM", "Notes", "Action"];
   if (kind === "ram") return ["Status", "Name", "Height", "Type", "RGB", "Notes", "Action"];
   return ["Status", "Name", "Notes", "Action"];
+}
+
+function headerSortKey(index: number, headerCount: number) {
+  if (index === 0) return "status";
+  if (index === 1) return "name";
+  if (index === headerCount - 2) return "notes";
+  if (index === headerCount - 1) return "action";
+  return `metric-${index - 2}`;
 }
 
 function constraintMeters(ctx: EvalContext) {
   if (ctx.state.kind === "gpu" && ctx.activeCase) {
     return [
-      { label: "Length", value: ctx.activeCase.dimensions.gpuLengthMm ? `Max ${formatValue(ctx.activeCase.dimensions.gpuLengthMm, "mm")}` : "Unknown", tone: "pass" as const, ratio: ratioFromLimit(ctx.activeCase.dimensions.gpuLengthMm, 400) },
-      { label: "Thickness", value: ctx.activeCase.dimensions.gpuThicknessMm ? `Max ${formatValue(ctx.activeCase.dimensions.gpuThicknessMm, "mm")}` : "Unknown", tone: "conditional" as const, ratio: ratioFromLimit(ctx.activeCase.dimensions.gpuThicknessMm, 90) },
-      { label: "Slots", value: ctx.activeCase.dimensions.pcieSlots ? `Max ${formatValue(ctx.activeCase.dimensions.pcieSlots)}` : "Unknown", tone: "neutral" as const, ratio: ratioFromLimit(ctx.activeCase.dimensions.pcieSlots, 4) }
+      {
+        label: "Length",
+        value: ctx.activeCase.dimensions.gpuLengthMm
+          ? `Max ${formatValue(ctx.activeCase.dimensions.gpuLengthMm, "mm")}`
+          : "Unknown",
+        tone: "pass" as const,
+        ratio: ratioFromLimit(ctx.activeCase.dimensions.gpuLengthMm, 400),
+      },
+      {
+        label: "Thickness",
+        value: ctx.activeCase.dimensions.gpuThicknessMm
+          ? `Max ${formatValue(ctx.activeCase.dimensions.gpuThicknessMm, "mm")}`
+          : "Unknown",
+        tone: "conditional" as const,
+        ratio: ratioFromLimit(ctx.activeCase.dimensions.gpuThicknessMm, 90),
+      },
+      {
+        label: "Slots",
+        value: ctx.activeCase.dimensions.pcieSlots
+          ? `Max ${formatValue(ctx.activeCase.dimensions.pcieSlots)}`
+          : "Unknown",
+        tone: "neutral" as const,
+        ratio: ratioFromLimit(ctx.activeCase.dimensions.pcieSlots, 4),
+      },
     ];
   }
 
   if (ctx.state.kind === "case" && ctx.activeGpu) {
     return [
-      { label: "GPU length", value: ctx.activeGpu.dimensions.lengthMm ? `${formatValue(ctx.activeGpu.dimensions.lengthMm, "mm")} required` : "Unknown", tone: "pass" as const, ratio: ratioFromLimit(ctx.activeGpu.dimensions.lengthMm, 400) },
-      { label: "GPU thickness", value: ctx.activeGpu.dimensions.thicknessMm ? `${formatValue(ctx.activeGpu.dimensions.thicknessMm, "mm")} required` : "Unknown", tone: "conditional" as const, ratio: ratioFromLimit(ctx.activeGpu.dimensions.thicknessMm, 90) },
-      { label: "Slots", value: ctx.activeGpu.dimensions.pcieSlots ? `${formatValue(ctx.activeGpu.dimensions.pcieSlots)} required` : "Unknown", tone: "neutral" as const, ratio: ratioFromLimit(ctx.activeGpu.dimensions.pcieSlots, 4) }
+      {
+        label: "GPU length",
+        value: ctx.activeGpu.dimensions.lengthMm
+          ? `${formatValue(ctx.activeGpu.dimensions.lengthMm, "mm")} required`
+          : "Unknown",
+        tone: "pass" as const,
+        ratio: ratioFromLimit(ctx.activeGpu.dimensions.lengthMm, 400),
+      },
+      {
+        label: "GPU thickness",
+        value: ctx.activeGpu.dimensions.thicknessMm
+          ? `${formatValue(ctx.activeGpu.dimensions.thicknessMm, "mm")} required`
+          : "Unknown",
+        tone: "conditional" as const,
+        ratio: ratioFromLimit(ctx.activeGpu.dimensions.thicknessMm, 90),
+      },
+      {
+        label: "Slots",
+        value: ctx.activeGpu.dimensions.pcieSlots
+          ? `${formatValue(ctx.activeGpu.dimensions.pcieSlots)} required`
+          : "Unknown",
+        tone: "neutral" as const,
+        ratio: ratioFromLimit(ctx.activeGpu.dimensions.pcieSlots, 4),
+      },
     ];
   }
 
   if (ctx.state.kind === "cpu-cooler" && ctx.activeCase) {
-    return [{ label: "Cooler height", value: ctx.activeCase.dimensions.cpuCoolerHeightMm ? `Max ${formatValue(ctx.activeCase.dimensions.cpuCoolerHeightMm, "mm")}` : "Unknown", tone: "pass" as const, ratio: ratioFromLimit(ctx.activeCase.dimensions.cpuCoolerHeightMm, 90) }];
+    return [
+      {
+        label: "Cooler height",
+        value: ctx.activeCase.dimensions.cpuCoolerHeightMm
+          ? `Max ${formatValue(ctx.activeCase.dimensions.cpuCoolerHeightMm, "mm")}`
+          : "Unknown",
+        tone: "pass" as const,
+        ratio: ratioFromLimit(ctx.activeCase.dimensions.cpuCoolerHeightMm, 90),
+      },
+    ];
   }
 
   if (ctx.state.kind === "psu" && ctx.activeCase) {
-    return [{ label: "PSU envelope", value: ctx.activeCase.psu || "Unknown", tone: "neutral" as const, ratio: 0.44 }];
+    return [
+      {
+        label: "PSU envelope",
+        value: ctx.activeCase.psu || "Unknown",
+        tone: "neutral" as const,
+        ratio: 0.44,
+      },
+    ];
   }
 
-  return [{ label: "No derived constraints", value: "Select a case or GPU to shape this table", tone: "neutral" as const, ratio: 0.28 }];
+  return [
+    {
+      label: "No derived constraints",
+      value: "Select a case or GPU to shape this table",
+      tone: "neutral" as const,
+      ratio: 0.28,
+    },
+  ];
 }
 
 function activeConstraintLabel(activeCase: CasePart | null, activeGpu: GpuPart | null) {
@@ -404,7 +739,11 @@ function activeConstraintLabel(activeCase: CasePart | null, activeGpu: GpuPart |
   return "No active constraints";
 }
 
-function slotVerdict(ctx: EvalContext, kind: SelectableKind, part: PartRecord | null = null): DisplayVerdict {
+function slotVerdict(
+  ctx: EvalContext,
+  kind: SelectableKind,
+  part: PartRecord | null = null,
+): DisplayVerdict {
   if (part) {
     const summary = evaluateCandidateFitment(ctx, part);
     if (summary.verdict !== "unscored") return summary.verdict;
@@ -432,15 +771,16 @@ function metricCells(part: PartRecord) {
       formatValue(part.dimensions.volumeL, "L"),
       formatValue(part.dimensions.gpuLengthMm, "mm"),
       formatValue(part.dimensions.gpuThicknessMm, "mm"),
-      formatValue(part.dimensions.pcieSlots)
+      formatValue(part.dimensions.pcieSlots),
     ];
   }
   if (isGpuPart(part)) {
     return [
       formatValue(part.dimensions.lengthMm, "mm"),
+      formatValue(part.dimensions.widthMm, "mm"),
       formatValue(part.dimensions.thicknessMm, "mm"),
       formatValue(part.dimensions.pcieSlots),
-      formatValue(part.tdpW, "W")
+      formatValue(part.tdpW, "W"),
     ];
   }
   if (isGenericPart(part) && part.kind === "cpu-cooler") {
@@ -448,7 +788,7 @@ function metricCells(part: PartRecord) {
       dimensionValue(part, ["height", "cooler_height"], "mm"),
       footprintValue(part, "mm"),
       dimensionValue(part, ["tdp"], "W"),
-      specValue(part, ["fan_size"])
+      specValue(part, ["fan_size"]),
     ];
   }
   if (isGenericPart(part) && part.kind === "psu") {
@@ -456,7 +796,7 @@ function metricCells(part: PartRecord) {
       psuTierLabel(part) || "-",
       specValue(part, ["form_factor", "psu"]),
       dimensionValue(part, ["wattage", "watt", "watts"], "W"),
-      specValue(part, ["12vhpwr_12v_2x6_connectors"]) || "-"
+      specValue(part, ["12vhpwr_12v_2x6_connectors"]) || "-",
     ];
   }
   if (isGenericPart(part) && part.kind === "motherboard") {
@@ -464,14 +804,16 @@ function metricCells(part: PartRecord) {
       motherboardFormFactor(part),
       specValue(part, ["socket"]),
       specValue(part, ["chipset"]),
-      [dimensionValue(part, ["ram_slots"]), specValue(part, ["ram_type"])].filter((value) => value && value !== "—").join(" / ") || "—"
+      [dimensionValue(part, ["ram_slots"]), specValue(part, ["ram_type"])]
+        .filter((value) => value && value !== "—")
+        .join(" / ") || "—",
     ];
   }
   if (isGenericPart(part) && part.kind === "ram") {
     return [
       dimensionValue(part, ["height_incl_contact_pins", "height"], "mm"),
       specValue(part, ["memory_type"]),
-      yesNoValue(part, ["rgb"])
+      yesNoValue(part, ["rgb"]),
     ];
   }
   return [];
@@ -479,19 +821,39 @@ function metricCells(part: PartRecord) {
 
 function fallbackNote(ctx: EvalContext, part: PartRecord) {
   if (isCasePart(part)) {
-    return hasActiveCaseConstraint(ctx) ? "No immediate issues in the active fitment rules." : "Select another part to evaluate case-side fitment evidence.";
+    return hasActiveCaseConstraint(ctx)
+      ? "No immediate issues in the active fitment rules."
+      : "Select another part to evaluate case-side fitment evidence.";
   }
   if (isGpuPart(part)) {
-    return ctx.activeCase ? "No immediate issues in the active fitment rules." : "Select a case to expose hard fitment limits and cautionary rows.";
+    return ctx.activeCase
+      ? "No immediate issues in the active fitment rules."
+      : "Select a case to expose hard fitment limits and cautionary rows.";
   }
   if (isGenericPart(part) && part.kind === "cpu-cooler") {
-    return compactJoin([specValue(part, ["type"]), `Height ${dimensionValue(part, ["height", "cooler_height"], "mm")}`]);
+    return compactJoin([
+      specValue(part, ["type"]),
+      `Height ${dimensionValue(part, ["height", "cooler_height"], "mm")}`,
+    ]);
   }
   if (isGenericPart(part) && part.kind === "psu") {
-    return compactJoin([psuTierLabel(part), specValue(part, ["form_factor", "psu"]), `Wattage ${dimensionValue(part, ["wattage", "watt", "watts"], "W")}`]);
+    return compactJoin([
+      psuTierLabel(part),
+      specValue(part, ["form_factor", "psu"]),
+      `Wattage ${dimensionValue(part, ["wattage", "watt", "watts"], "W")}`,
+    ]);
   }
-  if (isGenericPart(part) && part.kind === "motherboard") return compactJoin([motherboardFormFactor(part), specValue(part, ["socket"]), specValue(part, ["chipset"])]);
-  if (isGenericPart(part) && part.kind === "ram") return compactJoin([specValue(part, ["memory_type"]), `Height ${dimensionValue(part, ["height_incl_contact_pins", "height"], "mm")}`]);
+  if (isGenericPart(part) && part.kind === "motherboard")
+    return compactJoin([
+      motherboardFormFactor(part),
+      specValue(part, ["socket"]),
+      specValue(part, ["chipset"]),
+    ]);
+  if (isGenericPart(part) && part.kind === "ram")
+    return compactJoin([
+      specValue(part, ["memory_type"]),
+      `Height ${dimensionValue(part, ["height_incl_contact_pins", "height"], "mm")}`,
+    ]);
   return "Catalog-backed selection for this slot.";
 }
 
@@ -501,7 +863,8 @@ function evaluateCandidateFitment(ctx: EvalContext, part: PartRecord): FitmentSu
     if (ctx.activeGpu) checks.push(...evaluateGpuAgainstCase(ctx.activeGpu, part));
     if (ctx.activeCpuCooler) checks.push(evaluateCpuCoolerAgainstCase(ctx.activeCpuCooler, part));
     if (ctx.activePsu) checks.push(evaluatePsuAgainstCase(ctx.activePsu, part));
-    if (ctx.activeMotherboard) checks.push(evaluateMotherboardAgainstCase(ctx.activeMotherboard, part));
+    if (ctx.activeMotherboard)
+      checks.push(evaluateMotherboardAgainstCase(ctx.activeMotherboard, part));
   } else if (isGpuPart(part)) {
     if (ctx.activeCase) checks.push(...evaluateGpuAgainstCase(part, ctx.activeCase));
   } else if (isGenericPart(part) && part.kind === "cpu-cooler") {
@@ -513,41 +876,78 @@ function evaluateCandidateFitment(ctx: EvalContext, part: PartRecord): FitmentSu
     if (ctx.activeCase) checks.push(evaluateMotherboardAgainstCase(part, ctx.activeCase));
     if (ctx.activeRam) checks.push(evaluateRamAgainstMotherboard(ctx.activeRam, part));
   } else if (isGenericPart(part) && part.kind === "ram") {
-    if (ctx.activeMotherboard) checks.push(evaluateRamAgainstMotherboard(part, ctx.activeMotherboard));
+    if (ctx.activeMotherboard)
+      checks.push(evaluateRamAgainstMotherboard(part, ctx.activeMotherboard));
     if (ctx.activeCpuCooler) checks.push(evaluateRamAgainstCpuCooler(part, ctx.activeCpuCooler));
   }
   return summarizeFitmentChecks(checks);
 }
 
 function summarizeFitmentChecks(checks: FitmentCheck[]): FitmentSummary {
-  const messages = checks.filter((check) => check.message && check.verdict !== "pass" && !check.advisory).map((check) => check.message);
-  const notes = checks.filter((check) => check.advisory && check.message).map((check) => check.message);
-  const firstHighlight = checks.find((check) => check.verdict !== "pass" && !check.advisory && check.cellIndex !== undefined)?.cellIndex ?? null;
-  if (!checks.length) return { verdict: "unscored", messages: [], notes: [], highlightCellIndex: null };
-  if (checks.some((check) => check.verdict === "fail" && !check.advisory)) return { verdict: "fail", messages, notes, highlightCellIndex: firstHighlight };
-  if (checks.some((check) => check.verdict === "conditional" && !check.advisory)) return { verdict: "conditional", messages, notes, highlightCellIndex: firstHighlight };
+  const messages = checks
+    .filter((check) => check.message && check.verdict !== "pass" && !check.advisory)
+    .map((check) => check.message);
+  const notes = checks
+    .filter((check) => check.advisory && check.message)
+    .map((check) => check.message);
+  const firstHighlight =
+    checks.find(
+      (check) => check.verdict !== "pass" && !check.advisory && check.cellIndex !== undefined,
+    )?.cellIndex ?? null;
+  if (!checks.length)
+    return { verdict: "unscored", messages: [], notes: [], highlightCellIndex: null };
+  if (checks.some((check) => check.verdict === "fail" && !check.advisory))
+    return { verdict: "fail", messages, notes, highlightCellIndex: firstHighlight };
+  if (checks.some((check) => check.verdict === "conditional" && !check.advisory))
+    return { verdict: "conditional", messages, notes, highlightCellIndex: firstHighlight };
   return { verdict: "pass", messages: [], notes, highlightCellIndex: null };
 }
 
 function evaluateGpuAgainstCase(gpu: GpuPart, casePart: CasePart): FitmentCheck[] {
   const result = checkCaseGpuCompatibility(casePart, gpu);
-  if (!result.issues.length) return [{ verdict: "pass", message: "GPU dimensions fit the case GPU envelope." }];
-  const advisoryGpuIssueCodes = new Set(["case-status", "tight-gpuLengthMm", "tight-gpuWidthMm", "tight-gpuThicknessMm", "tight-pcieSlots"]);
+  if (!result.issues.length)
+    return [{ verdict: "pass", message: "GPU dimensions fit the case GPU envelope." }];
+  const advisoryGpuIssueCodes = new Set([
+    "case-status",
+    "tight-gpuLengthMm",
+    "tight-gpuWidthMm",
+    "tight-gpuThicknessMm",
+    "tight-pcieSlots",
+  ]);
   return result.issues.map((issue) => ({
-    verdict: issue.severity === "error" ? "fail" : advisoryGpuIssueCodes.has(issue.code) ? "pass" : "conditional",
+    verdict:
+      issue.severity === "error"
+        ? "fail"
+        : advisoryGpuIssueCodes.has(issue.code)
+          ? "pass"
+          : "conditional",
     message: issue.message,
     cellIndex: gpuIssueCellIndex(issue.code),
-    advisory: advisoryGpuIssueCodes.has(issue.code)
+    advisory: advisoryGpuIssueCodes.has(issue.code),
   }));
 }
 
 function evaluateCpuCoolerAgainstCase(cooler: GenericPart, casePart: CasePart): FitmentCheck {
   const maxHeight = casePart.dimensions.cpuCoolerHeightMm;
   const coolerHeight = dimensionNumber(cooler, ["height", "cooler_height"]);
-  if (!maxHeight) return { verdict: "conditional", message: "Case CPU cooler height limit is unknown." };
-  if (coolerHeight === null) return { verdict: "conditional", message: `Cooler height is unknown; case max is ${formatValue(maxHeight, "mm")}.`, cellIndex: 0 };
-  if (coolerHeight > maxHeight) return { verdict: "fail", message: `Cooler height ${formatValue(coolerHeight, "mm")} exceeds case max ${formatValue(maxHeight, "mm")}.`, cellIndex: 0 };
-  return { verdict: "pass", message: `Cooler height ${formatValue(coolerHeight, "mm")} fits case max ${formatValue(maxHeight, "mm")}.` };
+  if (!maxHeight)
+    return { verdict: "conditional", message: "Case CPU cooler height limit is unknown." };
+  if (coolerHeight === null)
+    return {
+      verdict: "conditional",
+      message: `Cooler height is unknown; case max is ${formatValue(maxHeight, "mm")}.`,
+      cellIndex: 0,
+    };
+  if (coolerHeight > maxHeight)
+    return {
+      verdict: "fail",
+      message: `Cooler height ${formatValue(coolerHeight, "mm")} exceeds case max ${formatValue(maxHeight, "mm")}.`,
+      cellIndex: 0,
+    };
+  return {
+    verdict: "pass",
+    message: `Cooler height ${formatValue(coolerHeight, "mm")} fits case max ${formatValue(maxHeight, "mm")}.`,
+  };
 }
 
 function evaluatePsuAgainstCase(psu: GenericPart, casePart: CasePart): FitmentCheck {
@@ -555,59 +955,151 @@ function evaluatePsuAgainstCase(psu: GenericPart, casePart: CasePart): FitmentCh
   const psuFormFactor = specValue(psu, ["form_factor", "psu"]);
   const caseTokens = parseSupportTokens(caseSupport, psuTokenAliases);
   const psuToken = canonicalToken(psuFormFactor, psuTokenAliases);
-  if (!caseTokens.size || !psuToken) return { verdict: "conditional", message: `PSU form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and PSU form factor is "${psuFormFactor || "unknown"}".`, cellIndex: 0 };
-  if (psuToken === "custom" || caseTokens.has("custom")) return { verdict: "conditional", message: `Custom PSU support requires manual verification (${psuFormFactor} in ${caseSupport}).`, cellIndex: 0 };
-  if (caseTokens.has(psuToken)) return { verdict: "pass", message: `PSU form factor ${psuFormFactor} is supported by case envelope ${caseSupport}.` };
-  return { verdict: "fail", message: `PSU form factor ${psuFormFactor} is not supported by case envelope ${caseSupport}.`, cellIndex: 0 };
+  if (!caseTokens.size || !psuToken)
+    return {
+      verdict: "conditional",
+      message: `PSU form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and PSU form factor is "${psuFormFactor || "unknown"}".`,
+      cellIndex: 0,
+    };
+  if (psuToken === "custom" || caseTokens.has("custom"))
+    return {
+      verdict: "conditional",
+      message: `Custom PSU support requires manual verification (${psuFormFactor} in ${caseSupport}).`,
+      cellIndex: 0,
+    };
+  if (caseTokens.has(psuToken))
+    return {
+      verdict: "pass",
+      message: `PSU form factor ${psuFormFactor} is supported by case envelope ${caseSupport}.`,
+    };
+  return {
+    verdict: "fail",
+    message: `PSU form factor ${psuFormFactor} is not supported by case envelope ${caseSupport}.`,
+    cellIndex: 0,
+  };
 }
 
-function evaluateMotherboardAgainstCase(motherboard: GenericPart, casePart: CasePart): FitmentCheck {
+function evaluateMotherboardAgainstCase(
+  motherboard: GenericPart,
+  casePart: CasePart,
+): FitmentCheck {
   const caseSupport = casePart.raw.Motherboard || casePart.raw.motherboard || "";
   const boardFormFactor = motherboardFormFactor(motherboard);
   const caseTokens = parseSupportTokens(caseSupport, motherboardTokenAliases);
   const boardToken = canonicalToken(boardFormFactor, motherboardTokenAliases);
-  if (!caseTokens.size || !boardToken) return { verdict: "conditional", message: `Motherboard form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and board form factor is "${boardFormFactor || "unknown"}".`, cellIndex: 0 };
-  if (caseTokens.has("custom") || boardToken === "custom") return { verdict: "conditional", message: `Custom motherboard support requires manual verification (${boardFormFactor} in ${caseSupport}).`, cellIndex: 0 };
-  if (caseTokens.has(boardToken)) return { verdict: "pass", message: `Motherboard form factor ${boardFormFactor} is supported by case envelope ${caseSupport}.` };
-  return { verdict: "fail", message: `Motherboard form factor ${boardFormFactor} is not supported by case envelope ${caseSupport}.`, cellIndex: 0 };
+  if (!caseTokens.size || !boardToken)
+    return {
+      verdict: "conditional",
+      message: `Motherboard form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and board form factor is "${boardFormFactor || "unknown"}".`,
+      cellIndex: 0,
+    };
+  if (caseTokens.has("custom") || boardToken === "custom")
+    return {
+      verdict: "conditional",
+      message: `Custom motherboard support requires manual verification (${boardFormFactor} in ${caseSupport}).`,
+      cellIndex: 0,
+    };
+  if (caseTokens.has(boardToken))
+    return {
+      verdict: "pass",
+      message: `Motherboard form factor ${boardFormFactor} is supported by case envelope ${caseSupport}.`,
+    };
+  return {
+    verdict: "fail",
+    message: `Motherboard form factor ${boardFormFactor} is not supported by case envelope ${caseSupport}.`,
+    cellIndex: 0,
+  };
 }
 
 function evaluateRamAgainstMotherboard(ram: GenericPart, motherboard: GenericPart): FitmentCheck {
   const ramType = specValue(ram, ["memory_type"]);
   const motherboardRamType = specValue(motherboard, ["ram_type"]);
-  if (!ramType || !motherboardRamType) return { verdict: "conditional", message: `RAM type cannot be fully checked; RAM is "${ramType || "unknown"}" and motherboard requires "${motherboardRamType || "unknown"}".`, cellIndex: 1 };
-  if (normalizeSpecToken(ramType) === normalizeSpecToken(motherboardRamType)) return { verdict: "pass", message: `${ramType} RAM matches motherboard memory type ${motherboardRamType}.` };
-  return { verdict: "fail", message: `${ramType} RAM does not match motherboard memory type ${motherboardRamType}.`, cellIndex: 1 };
+  if (!ramType || !motherboardRamType)
+    return {
+      verdict: "conditional",
+      message: `RAM type cannot be fully checked; RAM is "${ramType || "unknown"}" and motherboard requires "${motherboardRamType || "unknown"}".`,
+      cellIndex: 1,
+    };
+  if (normalizeSpecToken(ramType) === normalizeSpecToken(motherboardRamType))
+    return {
+      verdict: "pass",
+      message: `${ramType} RAM matches motherboard memory type ${motherboardRamType}.`,
+    };
+  return {
+    verdict: "fail",
+    message: `${ramType} RAM does not match motherboard memory type ${motherboardRamType}.`,
+    cellIndex: 1,
+  };
 }
 
 function evaluateRamAgainstCpuCooler(ram: GenericPart, cooler: GenericPart): FitmentCheck {
   const ramHeight = dimensionNumber(ram, ["height_incl_contact_pins", "height"]);
   const clearanceText = specValue(cooler, ["ram_clearance"]);
   const clearance = dimensionOrSpecNumber(cooler, ["ram_clearance"]);
-  if (/no\s*limit/i.test(clearanceText)) return { verdict: "pass", message: "CPU cooler lists no RAM height limit." };
-  if (ramHeight === null || clearance === null) return { verdict: "conditional", message: `RAM clearance cannot be fully checked; RAM height is ${formatValue(ramHeight, "mm")} and cooler clearance is ${clearanceText || "unknown"}.`, cellIndex: 0 };
-  if (ramHeight > clearance) return { verdict: "fail", message: `RAM height ${formatValue(ramHeight, "mm")} exceeds CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`, cellIndex: 0 };
-  return { verdict: "pass", message: `RAM height ${formatValue(ramHeight, "mm")} fits CPU cooler RAM clearance ${formatValue(clearance, "mm")}.` };
+  if (/no\s*limit/i.test(clearanceText))
+    return { verdict: "pass", message: "CPU cooler lists no RAM height limit." };
+  if (ramHeight === null || clearance === null)
+    return {
+      verdict: "conditional",
+      message: `RAM clearance cannot be fully checked; RAM height is ${formatValue(ramHeight, "mm")} and cooler clearance is ${clearanceText || "unknown"}.`,
+      cellIndex: 0,
+    };
+  if (ramHeight > clearance)
+    return {
+      verdict: "fail",
+      message: `RAM height ${formatValue(ramHeight, "mm")} exceeds CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
+      cellIndex: 0,
+    };
+  return {
+    verdict: "pass",
+    message: `RAM height ${formatValue(ramHeight, "mm")} fits CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
+  };
 }
 
 function displayTitle(part: PartRecord | null) {
   if (!part) return "Missing catalog record";
   if (isCasePart(part)) return `${part.seller} ${part.name}`.trim();
   if (isGpuPart(part)) {
-    const gpuTokens = [part.model, part.name].map((value) => value.trim()).filter((value) => value && value.toLowerCase() !== "gpu");
-    return gpuTokens.filter((value, index) => gpuTokens.indexOf(value) === index).join(" ").trim() || part.chipset || part.id;
+    const gpuTokens = [part.model, part.name]
+      .map((value) => value.trim())
+      .filter((value) => value && value.toLowerCase() !== "gpu");
+    return (
+      gpuTokens
+        .filter((value, index) => gpuTokens.indexOf(value) === index)
+        .join(" ")
+        .trim() ||
+      part.chipset ||
+      part.id
+    );
   }
   return part.displayName || [part.brand, part.name].filter(Boolean).join(" ").trim() || part.id;
 }
 
 function displaySubtitle(part: PartRecord | null) {
   if (!part) return "";
-  if (isCasePart(part)) return part.dimensions.volumeL ? `${formatValue(part.dimensions.volumeL, "L")} volume` : part.style || part.sourceSheet;
-  if (isGpuPart(part)) return part.brand || (part.tdpW ? `${formatValue(part.tdpW, "W")} TDP` : `${part.sourceSheet} #${part.rowNumber}`);
-  if (isGenericPart(part) && part.kind === "cpu-cooler") return [specValue(part, ["type"]), "CPU cooler"].filter(Boolean).join(" / ");
-  if (isGenericPart(part) && part.kind === "psu") return [specValue(part, ["form_factor"]), psuTierLabel(part), specValue(part, ["80_plus_rating"])].filter(Boolean).join(" / ") || "Power supply";
-  if (isGenericPart(part) && part.kind === "motherboard") return [motherboardFormFactor(part), specValue(part, ["socket", "chipset"])].filter(Boolean).join(" / ");
-  if (isGenericPart(part) && part.kind === "ram") return specValue(part, ["memory_type"]) || "Memory";
+  if (isCasePart(part))
+    return part.dimensions.volumeL
+      ? `${formatValue(part.dimensions.volumeL, "L")} volume`
+      : part.style || part.sourceSheet;
+  if (isGpuPart(part))
+    return (
+      part.brand ||
+      (part.tdpW ? `${formatValue(part.tdpW, "W")} TDP` : `${part.sourceSheet} #${part.rowNumber}`)
+    );
+  if (isGenericPart(part) && part.kind === "cpu-cooler")
+    return [specValue(part, ["type"]), "CPU cooler"].filter(Boolean).join(" / ");
+  if (isGenericPart(part) && part.kind === "psu")
+    return (
+      [specValue(part, ["form_factor"]), psuTierLabel(part), specValue(part, ["80_plus_rating"])]
+        .filter(Boolean)
+        .join(" / ") || "Power supply"
+    );
+  if (isGenericPart(part) && part.kind === "motherboard")
+    return [motherboardFormFactor(part), specValue(part, ["socket", "chipset"])]
+      .filter(Boolean)
+      .join(" / ");
+  if (isGenericPart(part) && part.kind === "ram")
+    return specValue(part, ["memory_type"]) || "Memory";
   return part.kind;
 }
 
@@ -620,7 +1112,7 @@ function slotSpecs(ctx: EvalContext, kind: SelectableKind, part: PartRecord | nu
       { label: "Slots", value: formatValue(part.dimensions.pcieSlots) },
       { label: "CPU cooler", value: formatValue(part.dimensions.cpuCoolerHeightMm, "mm") },
       { label: "PSU", value: part.psu || "-" },
-      { label: "Riser", value: part.gpuRiser || "-" }
+      { label: "Riser", value: part.gpuRiser || "-" },
     ];
   }
   if (part && isGpuPart(part)) {
@@ -631,16 +1123,61 @@ function slotSpecs(ctx: EvalContext, kind: SelectableKind, part: PartRecord | nu
       { label: "Slots", value: formatValue(part.dimensions.pcieSlots) },
       { label: "Power", value: part.pciePins || "-" },
       { label: "TDP", value: formatValue(part.tdpW, "W") },
-      { label: "Low profile", value: part.lowProfile ? "Yes" : "No" }
+      { label: "Low profile", value: part.lowProfile ? "Yes" : "No" },
     ];
   }
-  if (part && isGenericPart(part) && part.kind === "cpu-cooler") return compactSpecs([["Height", dimensionValue(part, ["height", "cooler_height"], "mm")], ["Footprint", footprintValue(part, "mm")], ["TDP", dimensionValue(part, ["tdp"], "W")], ["RAM clear", dimensionOrSpecValue(part, ["ram_clearance"], "mm")], ["Fan", specValue(part, ["fan_size"])], ["Type", specValue(part, ["type"])]]);
-  if (part && isGenericPart(part) && part.kind === "psu") return compactSpecs([["Tier", psuTierLabel(part) || "-"], ["Form factor", specValue(part, ["form_factor", "psu"])], ["Wattage", dimensionValue(part, ["wattage", "watt", "watts"], "W")], ["Modular", yesNoValue(part, ["modular"])], ["12VHPWR", specValue(part, ["12vhpwr_12v_2x6_connectors"])], ["Rating", specValue(part, ["80_plus_rating"])]]);
-  if (part && isGenericPart(part) && part.kind === "motherboard") return compactSpecs([["Form factor", motherboardFormFactor(part)], ["Socket", specValue(part, ["socket"])], ["Chipset", specValue(part, ["chipset"])], ["RAM slots", dimensionValue(part, ["ram_slots"])], ["RAM type", specValue(part, ["ram_type"])], ["PCIe x16", specValue(part, ["pcie_x16_slot"])]]);
-  if (part && isGenericPart(part) && part.kind === "ram") return compactSpecs([["Height", dimensionValue(part, ["height_incl_contact_pins", "height"], "mm")], ["Type", specValue(part, ["memory_type"])], ["RGB", yesNoValue(part, ["rgb"])]]);
-  if (kind === "gpu" && ctx.activeCase) return [{ label: "Max length", value: formatValue(ctx.activeCase.dimensions.gpuLengthMm, "mm") }, { label: "Max thickness", value: formatValue(ctx.activeCase.dimensions.gpuThicknessMm, "mm") }, { label: "Max slots", value: formatValue(ctx.activeCase.dimensions.pcieSlots) }, { label: "Low profile", value: formatValue(ctx.activeCase.dimensions.lpPcieSlots) }];
-  if (kind === "psu" && ctx.activeCase) return [{ label: "Allowed PSU", value: ctx.activeCase.psu || "-" }];
-  if (kind === "cpu-cooler" && ctx.activeCase) return [{ label: "Max height", value: formatValue(ctx.activeCase.dimensions.cpuCoolerHeightMm, "mm") }];
+  if (part && isGenericPart(part) && part.kind === "cpu-cooler")
+    return compactSpecs([
+      ["Height", dimensionValue(part, ["height", "cooler_height"], "mm")],
+      ["Footprint", footprintValue(part, "mm")],
+      ["TDP", dimensionValue(part, ["tdp"], "W")],
+      ["RAM clear", dimensionOrSpecValue(part, ["ram_clearance"], "mm")],
+      ["Fan", specValue(part, ["fan_size"])],
+      ["Type", specValue(part, ["type"])],
+    ]);
+  if (part && isGenericPart(part) && part.kind === "psu")
+    return compactSpecs([
+      ["Tier", psuTierLabel(part) || "-"],
+      ["Form factor", specValue(part, ["form_factor", "psu"])],
+      ["Wattage", dimensionValue(part, ["wattage", "watt", "watts"], "W")],
+      ["Modular", yesNoValue(part, ["modular"])],
+      ["12VHPWR", specValue(part, ["12vhpwr_12v_2x6_connectors"])],
+      ["Rating", specValue(part, ["80_plus_rating"])],
+    ]);
+  if (part && isGenericPart(part) && part.kind === "motherboard")
+    return compactSpecs([
+      ["Form factor", motherboardFormFactor(part)],
+      ["Socket", specValue(part, ["socket"])],
+      ["Chipset", specValue(part, ["chipset"])],
+      ["RAM slots", dimensionValue(part, ["ram_slots"])],
+      ["RAM type", specValue(part, ["ram_type"])],
+      ["PCIe x16", specValue(part, ["pcie_x16_slot"])],
+    ]);
+  if (part && isGenericPart(part) && part.kind === "ram")
+    return compactSpecs([
+      ["Height", dimensionValue(part, ["height_incl_contact_pins", "height"], "mm")],
+      ["Type", specValue(part, ["memory_type"])],
+      ["RGB", yesNoValue(part, ["rgb"])],
+    ]);
+  if (kind === "gpu" && ctx.activeCase)
+    return [
+      { label: "Max length", value: formatValue(ctx.activeCase.dimensions.gpuLengthMm, "mm") },
+      {
+        label: "Max thickness",
+        value: formatValue(ctx.activeCase.dimensions.gpuThicknessMm, "mm"),
+      },
+      { label: "Max slots", value: formatValue(ctx.activeCase.dimensions.pcieSlots) },
+      { label: "Low profile", value: formatValue(ctx.activeCase.dimensions.lpPcieSlots) },
+    ];
+  if (kind === "psu" && ctx.activeCase)
+    return [{ label: "Allowed PSU", value: ctx.activeCase.psu || "-" }];
+  if (kind === "cpu-cooler" && ctx.activeCase)
+    return [
+      {
+        label: "Max height",
+        value: formatValue(ctx.activeCase.dimensions.cpuCoolerHeightMm, "mm"),
+      },
+    ];
   return [];
 }
 
@@ -667,11 +1204,16 @@ function hasActiveCaseConstraint(ctx: EvalContext) {
 }
 
 function compactSpecs(entries: Array<[string, string]>): SlotSpec[] {
-  return entries.map(([label, value]) => ({ label, value: emptyToDash(value) })).filter((spec) => spec.value !== "—");
+  return entries
+    .map(([label, value]) => ({ label, value: emptyToDash(value) }))
+    .filter((spec) => spec.value !== "—");
 }
 
 function compactJoin(values: string[]) {
-  return values.filter((value) => value && value !== "—").join(" / ") || "Catalog-backed selection for this slot.";
+  return (
+    values.filter((value) => value && value !== "—").join(" / ") ||
+    "Catalog-backed selection for this slot."
+  );
 }
 
 function specValue(part: GenericPart, keys: string[]) {
@@ -754,9 +1296,14 @@ function normalizeSpecToken(value: string) {
 
 function gpuIssueCellIndex(code: string) {
   if (code.includes("gpuLengthMm")) return 0;
-  if (code.includes("gpuThicknessMm")) return 1;
-  if (code.includes("pcieSlots")) return 2;
+  if (code.includes("gpuWidthMm")) return 1;
+  if (code.includes("gpuThicknessMm")) return 2;
+  if (code.includes("pcieSlots")) return 3;
   return undefined;
+}
+
+function formatQueryNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
 }
 
 function motherboardFormFactor(part: GenericPart) {

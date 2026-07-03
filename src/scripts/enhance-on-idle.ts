@@ -1,6 +1,7 @@
 import { initAutocomplete } from "./autocomplete";
 import { initAutosubmitForms } from "./autosubmit-form";
 import { initDrawer } from "./drawer";
+import { initNumericFilters } from "./numeric-filters";
 
 const onIdle = (callback: () => void) => {
   const idleWindow = window as Window & {
@@ -18,4 +19,5 @@ onIdle(() => {
   initAutocomplete();
   initAutosubmitForms();
   initDrawer();
+  initNumericFilters();
 });

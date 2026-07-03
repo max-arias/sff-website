@@ -1,5 +1,6 @@
 ---
 import "../styles.css";
+import SiteHeader from "../components/SiteHeader.astro";
 
 interface Props {
   title: string;
@@ -33,6 +34,28 @@ const {
     </script>
   </head>
   <body class="bg-canvas text-ink antialiased">
+    <SiteHeader />
     <slot />
+    <script is:inline>
+      const root = document.documentElement;
+      const toggle = document.querySelector("[data-theme-toggle]");
+
+      const applyTheme = (theme) => {
+        root.dataset.theme = theme;
+        localStorage.setItem("theme", theme);
+        toggle?.setAttribute("aria-pressed", String(theme === "light"));
+      };
+
+      if (!localStorage.getItem("theme")) {
+        const prefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+        root.dataset.theme = prefersLight ? "light" : "dark";
+      }
+
+      toggle?.setAttribute("aria-pressed", String(root.dataset.theme === "light"));
+      toggle?.addEventListener("click", () => {
+        const nextTheme = root.dataset.theme === "light" ? "dark" : "light";
+        applyTheme(nextTheme);
+      });
+    </script>
   </body>
 </html>

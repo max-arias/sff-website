@@ -6,11 +6,20 @@ export function initDrawer() {
 
   if (!drawer) return;
 
+  const mobileDrawerQuery = window.matchMedia("(max-width: 899px)");
+
   const setOpen = (open: boolean) => {
     drawer.classList.toggle("sidebar--open", open);
     scrim?.toggleAttribute("hidden", !open);
     toggles.forEach((toggle) => toggle.setAttribute("aria-expanded", String(open)));
+
+    const shouldHideDrawerFromAssistiveTech = mobileDrawerQuery.matches && !open;
+    drawer.toggleAttribute("aria-hidden", shouldHideDrawerFromAssistiveTech);
+    drawer.inert = shouldHideDrawerFromAssistiveTech;
   };
+
+  setOpen(drawer.classList.contains("sidebar--open"));
+  mobileDrawerQuery.addEventListener("change", () => setOpen(drawer.classList.contains("sidebar--open")));
 
   toggles.forEach((toggle) => toggle.addEventListener("click", () => setOpen(!drawer.classList.contains("sidebar--open"))));
   closers.forEach((closer) => closer.addEventListener("click", () => setOpen(false)));

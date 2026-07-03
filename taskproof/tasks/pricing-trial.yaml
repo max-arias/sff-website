@@ -1,0 +1,16 @@
+# Can an agent preserve the URL-state contract while selecting a part?
+specVersion: "0.1"
+id: select-case-url-state
+goal: "Open the build page, switch to the case table if needed, select or add any case, and verify the selected build panel reflects the selection."
+entryUrl: "http://localhost:4321/build?kind=case"
+maxSteps: 25
+maxCostUsd: 2.00
+passPolicy:
+  k: 3
+  minPasses: 2
+assertions:
+  - type: url
+    pattern: "**case=**"
+  - type: dom
+    selector: "[data-slot='case'], aside"
+    state: visible

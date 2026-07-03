@@ -144,7 +144,7 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
       query: options.search,
       kind: options.kind,
       sourceSheet: options.sourceSheet,
-      limit: 1000
+      limit: options.pageSize
     })).suggestions.map((suggestion) => suggestion.id);
     filteredTotal = searchIds.length;
     const pageIds = searchIds.slice(offset, offset + options.pageSize);
@@ -319,7 +319,7 @@ function booleanish(value: unknown) {
 function clampCatalogOptions(options: Partial<CatalogQueryOptions> = {}): CatalogQueryOptions {
   return {
     page: Math.max(1, Math.floor(options.page ?? 1)),
-    pageSize: Math.max(10, Math.min(500, Math.floor(options.pageSize ?? 50))),
+    pageSize: Math.max(10, Math.min(5000, Math.floor(options.pageSize ?? 50))),
     kind: options.kind && options.kind !== "all" ? options.kind : undefined,
     sourceSheet: options.sourceSheet && options.sourceSheet !== "all" ? options.sourceSheet : undefined,
     search: options.search?.trim() || undefined
@@ -490,7 +490,7 @@ async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSear
   void event;
   const options = {
     query: rawOptions.query?.trim() ?? "",
-    limit: Math.max(1, Math.min(1000, Math.floor(rawOptions.limit ?? 25))),
+    limit: Math.max(1, Math.min(5000, Math.floor(rawOptions.limit ?? 25))),
     kind: rawOptions.kind && rawOptions.kind !== "all" ? rawOptions.kind : undefined,
     sourceSheet: rawOptions.sourceSheet && rawOptions.sourceSheet !== "all" ? rawOptions.sourceSheet : undefined
   };

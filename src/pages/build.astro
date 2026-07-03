@@ -3,6 +3,9 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { getBuildView } from "../server/build-view";
 
 const view = await getBuildView(Astro, Astro.url);
+const numericFilterNames = new Set(view.numericFilters.map((filter) => filter.name));
+const numericFilterHiddenInputs = view.hiddenInputs.filter((input) => !numericFilterNames.has(input.name as never));
+const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active);
 ---
 
 <BaseLayout
@@ -10,46 +13,26 @@ const view = await getBuildView(Astro, Astro.url);
   description="A replayable fitment workspace for selecting parts, inspecting constraints, and scanning pass, conditional, and fail rows."
 >
   <div class="build-page">
-    <header class="topbar">
-      <div class="topbar__inner">
-        <div class="brand">SFF_DATA_LOG</div>
-
-        <nav class="nav" aria-label="Primary">
-          <a class="nav__item nav__item--active" href="/build">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 4l8 8-8 8M4 12h16"></path>
-            </svg>
-            <span>Builder</span>
-          </a>
-          <a class="nav__item" href="/">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 6h14v12H5zM8 10h8M8 14h5"></path>
-            </svg>
-            <span>Launcher</span>
-          </a>
-        </nav>
-
-        <div class="topbar__tools">
-          <button
-            class="build-toggle"
-            type="button"
-            aria-expanded="false"
-            aria-controls="build-drawer"
-            data-drawer-toggle
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10"></path>
-            </svg>
-            <span>Build</span>
-          </button>
-        </div>
-      </div>
-    </header>
+    <div class="build-mobile-tools">
+      <button
+        class="build-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="build-drawer"
+        data-drawer-toggle
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10"></path>
+        </svg>
+        <span>Build</span>
+      </button>
+    </div>
 
     <button
       class="drawer-handle"
       type="button"
       aria-controls="build-drawer"
+      aria-expanded="false"
       aria-label="Open current build panel"
       data-drawer-open
     >
@@ -189,26 +172,73 @@ const view = await getBuildView(Astro, Astro.url);
           ))}
         </div>
 
+        {view.numericFilters.length > 0 && (
+          <form class="numeric-filters" method="GET" action={view.searchAction} data-numeric-filter-form>
+            {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+            {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
+            <div class="numeric-filters__header">
+              <span>Table filters</span>
+              {hasActiveNumericFilter && <a href={view.clearFiltersUrl}>Clear</a>}
+            </div>
+            <div class="numeric-filters__grid">
+              {view.numericFilters.map((filter) => (
+                <label class:list={["numeric-filter", { "numeric-filter--active": filter.active }]} data-numeric-filter>
+                  <span class="numeric-filter__label">{filter.label}</span>
+                  <input
+                    class="numeric-filter__range"
+                    type="range"
+                    min="0"
+                    max={filter.max}
+                    step={filter.step}
+                    value={filter.value}
+                    aria-label={`${filter.label} slider`}
+                    data-numeric-filter-range
+                  />
+                  <span class="numeric-filter__entry">
+                    <input
+                      type="number"
+                      name={filter.name}
+                      min="0"
+                      max={filter.max}
+                      step={filter.step}
+                      value={filter.active ? filter.value : ""}
+                      placeholder={`${filter.max}`}
+                      aria-label={filter.label}
+                      data-numeric-filter-number
+                    />
+                    <span>{filter.unit}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </form>
+        )}
+
         <div class="table-shell">
           <div class="table-scroll">
             <table class="parts-table">
               <thead>
                 <tr>
                   {view.tableHeaders.map((header) => (
-                    <th>
-                      {view.state.kind === "psu" && header === "Tier" ? (
+                    <th aria-sort={header.sortable ? (header.sortDir === "asc" ? "ascending" : header.sortDir === "desc" ? "descending" : "none") : undefined}>
+                      {header.sortable ? (
                         <span class="th-with-help">
-                          Tier
-                          <span class="info-trigger" tabindex="0" aria-label="About PSU tier ratings">
-                            i
-                            <span class="info-popover" role="tooltip">
-                              Community PSU quality rating from SPL's PSU Tier List. Unmatched PSUs show "-".
-                              <a href={view.psuTierSourceUrl} target="_blank" rel="noreferrer">Open source</a>
+                          <a class:list={["sort-link", { "sort-link--active": header.sortDir }]} href={header.sortUrl}>
+                            <span>{header.label}</span>
+                            <span class="sort-link__indicator" aria-hidden="true">{header.sortDir === "asc" ? "↑" : header.sortDir === "desc" ? "↓" : "↕"}</span>
+                          </a>
+                          {view.state.kind === "psu" && header.label === "Tier" && (
+                            <span class="info-trigger" tabindex="0" aria-label="About PSU tier ratings">
+                              i
+                              <span class="info-popover" role="tooltip">
+                                Community PSU quality rating from SPL's PSU Tier List. Unmatched PSUs show "-".
+                                <a href={view.psuTierSourceUrl} target="_blank" rel="noreferrer">Open source</a>
+                              </span>
                             </span>
-                          </span>
+                          )}
                         </span>
                       ) : (
-                        header
+                        header.label
                       )}
                     </th>
                   ))}

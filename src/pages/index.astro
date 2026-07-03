@@ -62,39 +62,6 @@ const footerLinks = [
   description="Launcher homepage for the SFF Builder fitment engine. Search parts, start from a case or GPU, and hand off into /build with replayable URL state."
 >
   <div class="min-h-screen">
-    <header class="sticky top-0 z-50 border-b border-line/80 bg-canvas/94 backdrop-blur-sm">
-      <div class="mx-auto flex max-w-[80rem] items-center justify-between gap-6 px-shell py-4">
-        <div class="flex items-center gap-8">
-          <a href="#top" class="font-sans text-[1.45rem] font-extrabold tracking-[-0.04em] text-accent-strong">SFF Builder</a>
-          <nav class="hidden items-center gap-8 text-[0.95rem] text-ink-soft md:flex">
-            <a class="border-b-2 border-accent pb-1 font-semibold text-ink" href="#launcher">Builder</a>
-            <a class="transition hover:text-ink" href="#proof">Proof</a>
-            <a class="transition hover:text-ink" href="/build">Workspace</a>
-          </nav>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <a
-            href="/build"
-            class="hidden border border-line bg-panel-2 px-4 py-2 text-sm font-semibold text-ink transition hover:border-line-strong hover:bg-panel md:inline-flex"
-          >
-            Open /build
-          </a>
-          <button
-            type="button"
-            data-theme-toggle
-            class="inline-flex h-10 w-10 items-center justify-center border border-line bg-panel text-ink-soft transition hover:border-line-strong hover:text-ink"
-            aria-label="Toggle theme"
-          >
-            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M12 3v2.5M12 18.5V21M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M3 12h2.5M18.5 12H21M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"></path>
-              <circle cx="12" cy="12" r="4.4"></circle>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </header>
-
     <main id="top">
       <section class="surface-grid border-b border-line/70 px-shell pb-10 pt-14 md:pb-14">
         <div class="mx-auto max-w-[80rem]">
@@ -316,25 +283,5 @@ const footerLinks = [
     </footer>
   </div>
 
-  <script is:inline>
-    const root = document.documentElement;
-    const toggle = document.querySelector("[data-theme-toggle]");
-
-    const applyTheme = (theme) => {
-      root.dataset.theme = theme;
-      localStorage.setItem("theme", theme);
-      toggle?.setAttribute("aria-pressed", String(theme === "light"));
-    };
-
-    if (!localStorage.getItem("theme")) {
-      const prefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
-      root.dataset.theme = prefersLight ? "light" : "dark";
-    }
-
-    toggle?.addEventListener("click", () => {
-      const nextTheme = root.dataset.theme === "light" ? "dark" : "light";
-      applyTheme(nextTheme);
-    });
-  </script>
   <script src="../scripts/enhance-on-idle.ts"></script>
 </BaseLayout>
