@@ -101,6 +101,10 @@ The MVP does not yet validate:
 
 These are future layers once the case/GPU engine is trustworthy.
 
+## Future Ideas
+
+- Community-intent filters: support saved, named filter bundles for common builder goals that show up repeatedly in forums and Reddit threads. For example, a `console-like SFF` filter could narrow the case table to living-room or console-style cases, then let users inspect which GPUs and other parts fit those cases. These should remain filter-and-explain tools, not ranked recommendations: failing and conditional rows should stay visible with evidence, and any subjective labels such as "console-like", "sandwich style", or "vertical footprint" should be treated as explicit, reviewable catalog attributes with provenance.
+
 ## User Experience Direction
 
 The interface should feel like a fast technical instrument, not a lifestyle configurator.

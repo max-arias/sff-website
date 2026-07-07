@@ -331,26 +331,7 @@
     --warning-soft: color-mix(in oklab, var(--warning) 18%, var(--panel));
     --danger-soft: color-mix(in oklab, var(--danger) 16%, var(--panel));
     min-height: 100vh;
-    background:
-      linear-gradient(
-        to right,
-        color-mix(in oklab, var(--line) 22%, transparent) 1px,
-        transparent 1px
-      ),
-      linear-gradient(
-        to bottom,
-        color-mix(in oklab, var(--line) 22%, transparent) 1px,
-        transparent 1px
-      ),
-      linear-gradient(
-        180deg,
-        color-mix(in oklab, var(--canvas) 88%, var(--canvas-2)) 0%,
-        var(--canvas-2) 100%
-      );
-    background-size:
-      40px 40px,
-      40px 40px,
-      auto;
+    background: color-mix(in oklab, var(--canvas-2) 38%, transparent);
     color: var(--ink);
   }
 
@@ -434,8 +415,8 @@
 
   .build-page .workspace {
     display: block;
-    width: min(calc(100% - (var(--spacing-shell) * 2)), 80rem);
-    max-width: 80rem;
+    width: min(calc(100% - (var(--spacing-shell) * 2)), 112rem);
+    max-width: 112rem;
     margin: 1rem auto 0;
     min-height: calc(100vh - 4rem);
     border-left: 1px solid var(--line);
@@ -541,7 +522,7 @@
 
   .build-page .slot-card {
     border: 1px solid var(--line);
-    border-top: 2px solid var(--line-strong);
+    border-left: 4px solid var(--line-strong);
     background: var(--panel);
     padding: 0.9rem;
   }
@@ -552,17 +533,17 @@
   }
 
   .build-page .slot-card--pass {
-    border-top-color: var(--accent);
+    border-left-color: var(--accent);
   }
 
   .build-page .slot-card--conditional {
-    border-top-color: var(--warning);
+    border-left-color: var(--warning);
   }
 
   .build-page .slot-card--fail,
   .build-page .slot-card--unresolved {
     border-color: color-mix(in oklab, var(--danger) 45%, var(--line));
-    border-top-color: var(--danger);
+    border-left-color: var(--danger);
   }
 
   .build-page .slot-card__top,
@@ -592,10 +573,14 @@
     border-radius: 2px;
   }
 
-  .build-page .slot-card__clear,
-  .build-page .slot-card__browse {
+  .build-page .slot-card__clear {
     width: 1.45rem;
     height: 1.45rem;
+    text-decoration: none;
+  }
+
+  .build-page .slot-card__browse {
+    min-height: 1.75rem;
     text-decoration: none;
   }
 
@@ -606,9 +591,7 @@
   }
 
   .build-page .slot-card__browse {
-    border: 1px solid var(--line-strong);
-    background: transparent;
-    color: var(--ink);
+    @apply inline-flex items-center gap-2 px-2 py-1 border border-line-strong bg-panel-3 text-ink font-mono text-[0.7rem] font-bold uppercase tracking-wider transition hover:bg-panel-2;
   }
 
   .build-page .slot-card__clear svg,
@@ -970,6 +953,7 @@
     border-collapse: collapse;
     background: color-mix(in oklab, var(--panel) 96%, transparent);
     border: 1px solid var(--line);
+    display: none;
   }
 
   .build-page .parts-table th,
@@ -1066,21 +1050,114 @@
     display: block;
   }
 
-  .build-page .parts-row:hover {
-    background: color-mix(in oklab, var(--panel-2) 68%, var(--panel));
+  .build-page .parts-row {
+    border-left: 4px solid transparent;
+  }
+
+  .build-page .parts-row--pass {
+    border-left-color: var(--accent);
   }
 
   .build-page .parts-row--conditional {
+    border-left-color: var(--warning);
     background: color-mix(in oklab, var(--warning) 8%, transparent);
   }
 
   .build-page .parts-row--fail {
+    border-left-color: var(--danger);
     background: color-mix(in oklab, var(--danger) 8%, transparent);
   }
 
   .build-page .parts-row--selected {
     outline: 1px solid var(--line-strong);
     outline-offset: -1px;
+  }
+
+  .build-page .table-notice {
+    @apply mx-4 my-3 p-3 text-sm border border-line bg-panel-2 text-ink-soft rounded-sm;
+  }
+
+  .build-page .filter-chips {
+    @apply flex flex-wrap gap-2 px-4 py-2;
+  }
+
+  .build-page .filter-chip {
+    @apply inline-flex items-center gap-1.5 px-2 py-1 text-[0.7rem] font-mono font-bold uppercase tracking-wider border border-line bg-panel text-ink-soft transition hover:text-ink hover:border-accent;
+  }
+
+  .build-page .filter-chip--context {
+    @apply cursor-default border-line bg-panel-2 text-ink;
+  }
+
+  .build-page .filter-chip svg {
+    width: 0.7rem;
+    height: 0.7rem;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+  }
+
+  .build-page .mobile-cards {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .build-page .mobile-card {
+    @apply border border-line bg-panel overflow-hidden;
+    border-left: 4px solid var(--line);
+  }
+
+  .build-page .mobile-card--pass { border-left-color: var(--accent); }
+  .build-page .mobile-card--conditional { border-left-color: var(--warning); }
+  .build-page .mobile-card--fail { border-left-color: var(--danger); }
+
+  .build-page .mobile-card__header {
+    @apply flex items-center justify-between p-3 border-b border-line bg-panel-2;
+  }
+
+  .build-page .mobile-card__body {
+    @apply p-3 gap-3 flex flex-col;
+  }
+
+  .build-page .mobile-card__body h2 {
+    @apply text-base font-bold leading-tight m-0;
+  }
+
+  .build-page .mobile-card__body p {
+    @apply text-sm text-ink-soft m-0;
+  }
+
+  .build-page .mobile-card__metrics {
+    @apply grid grid-cols-2 gap-2 py-2;
+  }
+
+  .build-page .metric-pill {
+    @apply flex flex-col p-2 border border-line bg-panel-3 font-mono;
+  }
+
+  .build-page .metric-label {
+    @apply text-[0.6rem] uppercase font-bold text-ink-faint;
+  }
+
+  .build-page .metric-value {
+    @apply text-xs font-bold text-ink;
+  }
+
+  .build-page .metric-pill--alert {
+    @apply border-danger text-danger bg-danger/10;
+  }
+
+  .build-page .metric-pill--alert .metric-label {
+    color: var(--danger);
+  }
+
+  .build-page .metric-pill--alert .metric-value {
+    color: var(--danger);
+  }
+
+  .build-page .mobile-card__note {
+    @apply p-2 text-xs text-ink-soft bg-panel-2 border-l-2 border-line italic;
   }
 
   .build-page .title-cell {
@@ -1153,6 +1230,11 @@
   }
 
   @media (min-width: 900px) {
+    .build-page {
+      height: calc(100vh - 4.3125rem);
+      min-height: 0;
+    }
+
     .build-page .build-mobile-tools,
     .build-page .drawer-handle,
     .build-page .build-toggle,
@@ -1161,23 +1243,46 @@
     }
 
     .build-page .workspace {
-      display: block;
+      display: grid;
+      grid-template-columns: 23rem minmax(0, 1fr);
+      height: calc(100vh - 4.3125rem);
+      min-height: 0;
+      margin-top: 0;
+      overflow: hidden;
     }
 
     .build-page .sidebar {
-      position: relative;
-      top: 0;
+      position: sticky;
+      top: 4.3125rem;
+      height: calc(100vh - 4.3125rem);
       z-index: 1;
-      width: auto;
-      height: auto;
+      width: 23rem;
       transform: none;
       box-shadow: none;
-      border-right: 0;
-      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      border-bottom: 0;
+    }
+
+    .build-page .mobile-cards {
+      display: none;
+    }
+
+    .build-page .parts-table {
+      display: table;
+    }
+
+    .build-page .main-panel,
+    .build-page .table-shell,
+    .build-page .table-scroll {
+      min-height: 0;
     }
 
     .build-page .slot-stack {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: 1fr;
+    }
+
+    .build-page .sidebar__close {
+      display: none;
     }
   }
 

@@ -90,6 +90,7 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
                 ) : (
                   <div class="slot-card__top-actions">
                     <a class="slot-card__browse" href={slot.browseUrl} aria-label={slot.actionLabel} title={slot.actionLabel}>
+                      <span>{slot.actionLabel}</span>
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <circle cx="11" cy="11" r="6.5"></circle>
                         <path d="M16 16l5 5"></path>
@@ -132,6 +133,7 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
       </aside>
 
       <section class="main-panel">
+
         <div class="main-panel__header">
           <div>
             <h2>Hardware Library</h2>
@@ -150,25 +152,29 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
           </div>
         </div>
 
+        {view.tableNotice && <div class="table-notice">{view.tableNotice}</div>}
+
+        {view.activeFilterChips && view.activeFilterChips.length > 0 && (
+          <div class="filter-chips">
+            {view.activeFilterChips.map((chip) => (
+              <a href={chip.href} class:list={["filter-chip", { "filter-chip--context": chip.tone === "neutral" }]}>
+                {chip.label}
+                {chip.tone !== "neutral" && (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18 6L6 18M6 6l12 12"></path>
+                  </svg>
+                )}
+              </a>
+            ))}
+          </div>
+        )}
+
+
         <div class="kind-tabs" role="tablist" aria-label="Part kinds">
           {view.kindTabs.map((tab) => (
             <a class:list={["kind-tab", { "kind-tab--active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
               {tab.kind}
             </a>
-          ))}
-        </div>
-
-        <div class="constraint-strip">
-          {view.constraintMeters.map((meter) => (
-            <div class="constraint-meter">
-              <div class="constraint-meter__label">
-                <span>{meter.label}</span>
-                <strong>{meter.value}</strong>
-              </div>
-              <div class="constraint-meter__track">
-                <span class={`constraint-meter__fill constraint-meter__fill--${meter.tone}`} style={`width: ${meter.ratio * 100}%`}></span>
-              </div>
-            </div>
           ))}
         </div>
 
@@ -216,6 +222,30 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
 
         <div class="table-shell">
           <div class="table-scroll">
+            <div class="mobile-cards">
+              {view.rows.map((row) => (
+                <article class:list={["mobile-card", `mobile-card--${row.verdict}`]}>
+                  <div class="mobile-card__header">
+                    <span class={`status-chip status-chip--${row.verdict}`}>{row.verdictLabel}</span>
+                    <a class={`table-button table-button--${row.actionTone}`} href={row.actionUrl}>{row.actionLabel}</a>
+                  </div>
+                  <div class="mobile-card__body">
+                    <h2>{row.title}</h2>
+                    <p>{row.subtitle}</p>
+                    <div class="mobile-card__metrics">
+                      {row.mobileMetrics.map((m) => (
+                        <div class:list={["metric-pill", { "metric-pill--alert": m.alert }]}>
+                          <span class="metric-label">{m.label}</span>
+                          <span class="metric-value">{m.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {row.note && <p class="mobile-card__note">{row.note}</p>}
+                  </div>
+                </article>
+              ))}
+            </div>
+
             <table class="parts-table">
               <thead>
                 <tr>

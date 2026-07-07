@@ -28,33 +28,6 @@ const launchPaths = [
   }
 ];
 
-const referenceChecks = [
-  ["Fractal Terra + 4080 FE", "Reference check: 3.4mm CPU clearance margin noted"],
-  ["FormD T1 + ProArt 4080", "Reference check: radiator and tube routing caveat retained"],
-  ["Velka 3 + ITX 4060", "Reference check: Flex-ATX PSU constraint stays visible"],
-  ["A4-H2O + Strix 4070 Ti", "Reference check: triple-slot width requires close review"]
-];
-
-const principles = [
-  {
-    title: "Millimeter-first fitment",
-    copy: "The launcher points into a table-driven engine built around physical envelopes, not generic parts browsing."
-  },
-  {
-    title: "Pass, conditional, fail",
-    copy: "Known conflicts stay visible next to uncertain rows so builders can inspect risk instead of having it filtered away."
-  },
-  {
-    title: "Replayable URL state",
-    copy: "Selections and filters move into `/build` as readable query parameters that can be shared, reopened, and debugged."
-  }
-];
-
-const footerLinks = [
-  { label: "Open build workspace", href: "/build" },
-  { label: "Launcher section", href: "#launcher" },
-  { label: "Reference checks", href: "#proof" }
-];
 ---
 
 <BaseLayout
@@ -63,15 +36,6 @@ const footerLinks = [
 >
   <div class="min-h-screen">
     <main id="top">
-      <section class="surface-grid border-b border-line/70 px-shell pb-10 pt-14 md:pb-14">
-        <div class="mx-auto max-w-[80rem]">
-          <div class="inline-flex items-center gap-2 border border-line bg-panel-2/80 px-3 py-1.5 font-mono text-[0.72rem] uppercase tracking-[0.16em] text-ink-soft">
-            <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
-            Route status: `/build` live // URL state public
-          </div>
-        </div>
-      </section>
-
       <section id="launcher" class="bg-canvas-2/38 px-shell py-8 md:py-12">
         <div class="mx-auto flex max-w-[80rem] flex-col gap-4">
           <section class="launcher-panel p-6 md:p-8">
@@ -207,80 +171,7 @@ const footerLinks = [
         </div>
       </section>
 
-      <section id="proof" class="border-y border-line/80 bg-panel/68 px-shell py-14">
-        <div class="mx-auto grid max-w-[80rem] gap-10 lg:grid-cols-[minmax(0,1.65fr)_20.5rem]">
-          <div>
-            <div class="mb-8 flex items-center justify-between gap-4">
-              <div class="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" class="h-5 w-5 text-accent" fill="none" stroke="currentColor" stroke-width="1.75">
-                  <path d="M12 3l7 3v6c0 4.3-2.6 7.6-7 9-4.4-1.4-7-4.7-7-9V6l7-3z"></path>
-                  <path d="M9 12l2 2 4-4"></path>
-                </svg>
-                <p class="micro-label text-ink">Reference checks</p>
-              </div>
-              <a href="/build" class="text-sm text-accent transition hover:text-accent-strong">Open fitment workspace</a>
-            </div>
-
-            <div class="grid gap-4 md:grid-cols-2">
-              {referenceChecks.map(([title, copy]) => (
-                <article class="proof-row">
-                  <div class="proof-row__icon">
-                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.75">
-                      <path d="M7 12.5l3 3 7-7"></path>
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="proof-row__label">check</span>
-                      <h3 class="font-mono text-sm font-semibold text-ink md:text-[0.97rem]">{title}</h3>
-                    </div>
-                    <p class="mt-1.5 text-sm text-ink-soft">{copy}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <aside class="launcher-panel p-8">
-            <h2 class="text-[2rem] font-semibold tracking-[-0.04em] text-ink">Why SFF Builder?</h2>
-            <ul class="mt-8 grid gap-7">
-              {principles.map((item) => (
-                <li class="grid gap-2 border-b border-line/70 pb-6 last:border-b-0 last:pb-0">
-                  <p class="text-[1.05rem] font-semibold text-ink">{item.title}</p>
-                  <p class="text-sm leading-7 text-ink-soft">{item.copy}</p>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        </div>
-      </section>
     </main>
-
-    <footer class="bg-canvas px-shell py-12">
-      <div class="mx-auto grid max-w-[80rem] gap-10 border-t border-line/80 pt-10 md:grid-cols-[minmax(0,1fr)_auto]">
-        <div class="max-w-sm">
-          <p class="micro-label mb-4 text-accent-strong">SFF Builder</p>
-          <p class="text-[1.8rem] font-medium tracking-[-0.04em] text-ink">
-            A launcher into the fitment engine, tuned for builders who would rather inspect evidence than guess.
-          </p>
-        </div>
-
-        <div class="grid gap-x-12 gap-y-6 text-sm md:grid-cols-2">
-          <div class="grid gap-3">
-            <p class="micro-label text-ink">Platform</p>
-            {footerLinks.map((link) => (
-              <a href={link.href} class="text-ink-soft transition hover:text-ink">{link.label}</a>
-            ))}
-          </div>
-          <div class="grid gap-3">
-            <p class="micro-label text-ink">Fitment rules</p>
-            <span class="text-ink-soft">`pass` stays visible</span>
-            <span class="text-ink-soft">`conditional` keeps uncertainty</span>
-            <span class="text-ink-soft">`fail` marks known hard conflicts</span>
-          </div>
-        </div>
-      </div>
-    </footer>
   </div>
 
   <script src="../scripts/enhance-on-idle.ts"></script>

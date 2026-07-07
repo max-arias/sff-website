@@ -61,6 +61,7 @@ export interface BuildViewRow {
   actionTone: "add" | "remove";
   actionUrl: string;
   highlightCellIndex: number | null;
+  mobileMetrics: Array<{ label: string; value: string; alert: boolean }>;
 }
 
 export interface BuildViewTableHeader {
@@ -111,6 +112,8 @@ export interface BuildView {
   previousUrl: string;
   nextUrl: string;
   psuTierSourceUrl: string;
+  activeFilterChips: Array<{ label: string; href: string; tone?: "neutral" | "active" }>;
+  tableNotice: string;
 }
 
 const pageSize = 25;
@@ -236,6 +239,8 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
     previousUrl: buildUrl(state, { page: Math.max(1, state.page - 1) }),
     nextUrl: buildUrl(state, { page: Math.min(pageCount, state.page + 1) }),
     psuTierSourceUrl,
+    activeFilterChips: buildFilterChips(state),
+    tableNotice: buildTableNotice(ctx, state),
   };
 }
 
@@ -379,6 +384,7 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
   const fitment = evaluateCandidateFitment(ctx, part);
   const note = fitment.messages[0] || fitment.notes[0] || fallbackNote(ctx, part);
   const cells = metricCells(part);
+  const metricLabels = tableHeaderLabels(ctx.state.kind).slice(2, -2);
 
   return {
     id: part.id,
@@ -386,6 +392,11 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     title: displayTitle(part),
     subtitle: displaySubtitle(part),
     cells,
+    mobileMetrics: metricLabels.map((label, i) => ({
+      label,
+      value: cells[i] ?? "",
+      alert: fitment.highlightCellIndex === i,
+    })),
     verdict: fitment.verdict,
     verdictLabel: verdictLabel(fitment.verdict),
     note,
@@ -740,6 +751,80 @@ function activeConstraintLabel(activeCase: CasePart | null, activeGpu: GpuPart |
   return "No active constraints";
 }
 
+function buildFilterChips(state: BuildQueryState): BuildView["activeFilterChips"] {
+  const chips: BuildView["activeFilterChips"] = [];
+
+  chips.push({ label: state.kind, href: buildUrl(state, {}), tone: "neutral" });
+
+  if (state.search.trim()) {
+    chips.push({
+      label: `"${state.search.trim()}"`,
+      href: buildUrl(state, { search: "", resetPage: true }),
+      tone: "active",
+    });
+  }
+
+  if (state.sort !== "fitment") {
+    chips.push({
+      label: `Sort: ${state.sort}`,
+      href: buildUrl(state, { sort: "fitment", dir: "asc", resetPage: true }),
+      tone: "active",
+    });
+  }
+
+  if (state.page > 1) {
+    chips.push({
+      label: `Page ${state.page}`,
+      href: buildUrl(state, { page: 1 }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "case" && state.maxVolumeL !== null) {
+    chips.push({
+      label: `Max volume: ${state.maxVolumeL}L`,
+      href: buildUrl(state, { maxVolumeL: null, resetPage: true }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "gpu") {
+    if (state.maxGpuLengthMm !== null) {
+      chips.push({
+        label: `Max length: ${state.maxGpuLengthMm}mm`,
+        href: buildUrl(state, { maxGpuLengthMm: null, resetPage: true }),
+        tone: "active",
+      });
+    }
+    if (state.maxGpuWidthMm !== null) {
+      chips.push({
+        label: `Max width: ${state.maxGpuWidthMm}mm`,
+        href: buildUrl(state, { maxGpuWidthMm: null, resetPage: true }),
+        tone: "active",
+      });
+    }
+    if (state.maxGpuHeightMm !== null) {
+      chips.push({
+        label: `Max height: ${state.maxGpuHeightMm}mm`,
+        href: buildUrl(state, { maxGpuHeightMm: null, resetPage: true }),
+        tone: "active",
+      });
+    }
+  }
+
+  return chips;
+}
+
+function buildTableNotice(ctx: EvalContext, state: BuildQueryState): string {
+  if (state.kind === "gpu" && !ctx.activeCase) {
+    return "Select a case to expose hard fitment limits and cautionary rows.";
+  }
+  if (state.kind === "case" && !hasActiveCaseConstraint(ctx)) {
+    return "Select another part to evaluate case-side fitment evidence.";
+  }
+  return "";
+}
+
 function slotVerdict(
   ctx: EvalContext,
   kind: SelectableKind,
@@ -824,12 +909,12 @@ function fallbackNote(ctx: EvalContext, part: PartRecord) {
   if (isCasePart(part)) {
     return hasActiveCaseConstraint(ctx)
       ? "No immediate issues in the active fitment rules."
-      : "Select another part to evaluate case-side fitment evidence.";
+      : "";
   }
   if (isGpuPart(part)) {
     return ctx.activeCase
       ? "No immediate issues in the active fitment rules."
-      : "Select a case to expose hard fitment limits and cautionary rows.";
+      : "";
   }
   if (isGenericPart(part) && part.kind === "cpu-cooler") {
     return compactJoin([
