@@ -180,9 +180,10 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
     activeRam,
   };
   const { candidates, totalRows } = await loadCandidates(context, state, parts);
-  const sortedRows = candidates
-    .map((part) => buildRow(ctx, part))
-    .sort((a, b) => rowSort(a, b, state));
+  const builtRows = candidates.map((part) => buildRow(ctx, part));
+  const sortedRows = state.search.trim() && state.sort === "fitment"
+    ? builtRows
+    : builtRows.sort((a, b) => rowSort(a, b, state));
   const rows = sortedRows.slice(
     (state.page - 1) * activePageSize(state.kind),
     state.page * activePageSize(state.kind),
@@ -302,12 +303,12 @@ async function searchTypedCandidates<T extends CasePart | GpuPart>(
   kind: SelectableKind,
   query: string,
 ) {
-  const ids = new Set(
-    (await searchCatalog(context, { query, kind, limit: 1000 })).suggestions.map(
-      (suggestion) => suggestion.id,
-    ),
-  );
-  return pool.filter((part) => ids.has(part.id));
+  const partsById = new Map(pool.map((part) => [part.id, part]));
+  const suggestions = (await searchCatalog(context, { query, kind, limit: 1000 })).suggestions;
+
+  return suggestions
+    .map((suggestion) => partsById.get(suggestion.id))
+    .filter((part): part is T => Boolean(part));
 }
 
 function activePageSize(kind: SelectableKind) {

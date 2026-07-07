@@ -1,5 +1,10 @@
 import { env } from "cloudflare:workers";
 import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
+import {
+  fuseSearchRows,
+  rowSearchText,
+  type CatalogSearchRow
+} from "./catalog-search";
 
 interface D1Result<T> {
   results?: T[];
@@ -27,21 +32,6 @@ export interface CatalogSearchOptions {
   limit: number;
   kind?: string;
   sourceSheet?: string;
-}
-
-interface CatalogSearchRow {
-  id: string;
-  kind: string;
-  source_sheet: string;
-  source_row_number: number;
-  brand: string;
-  name: string;
-  display_name: string;
-  status: string;
-  gpu_chipset: string;
-  gpu_model: string;
-  case_seller: string;
-  case_style: string;
 }
 
 export interface CatalogSearchSuggestion {
@@ -326,101 +316,6 @@ function clampCatalogOptions(options: Partial<CatalogQueryOptions> = {}): Catalo
   };
 }
 
-function rowSearchText(row: CatalogSearchRow) {
-  return [
-    row.display_name,
-    row.brand,
-    row.name,
-    row.kind,
-    row.source_sheet,
-    row.status,
-    row.gpu_chipset,
-    row.gpu_model,
-    row.case_seller,
-    row.case_style
-  ].join(" ");
-}
-
-function fuzzyScore(text: string, query: string) {
-  const haystack = text.toLowerCase();
-  const needle = query.toLowerCase().trim();
-  if (!needle) return 0;
-  if (haystack === needle) return 1000;
-  if (haystack.startsWith(needle)) return 900 - Math.min(100, haystack.length - needle.length);
-  if (haystack.includes(needle)) return 760 - Math.min(160, haystack.indexOf(needle));
-
-  const terms = needle.split(/\s+/).filter(Boolean);
-  const matchedTerms = terms.filter((term) => haystack.includes(term));
-  if (matchedTerms.length === terms.length) {
-    return 520 + matchedTerms.length * 80;
-  }
-
-  const words = haystack.split(/[^a-z0-9]+/).filter(Boolean);
-  const typoMatches = terms.filter((term) => {
-    const maxDistance = term.length <= 4 ? 1 : Math.max(1, Math.floor(term.length * 0.25));
-    return words.some((word) => {
-      const prefix = word.slice(0, term.length);
-      return levenshteinDistance(prefix, term) <= maxDistance;
-    });
-  });
-  if (typoMatches.length === terms.length) {
-    return 430 + typoMatches.length * 60;
-  }
-
-  const compactNeedle = needle.replace(/\s+/g, "");
-  if (compactNeedle.length > 3) return 0;
-
-  let cursor = 0;
-  let streak = 0;
-  let matchedChars = 0;
-  let score = 180;
-
-  for (const char of compactNeedle) {
-    const index = haystack.indexOf(char, cursor);
-    if (index === -1) return 0;
-    matchedChars += 1;
-    score += 12;
-    if (index === cursor) {
-      streak += 1;
-      score += streak * 4;
-    } else {
-      streak = 0;
-    }
-    cursor = index + 1;
-  }
-
-  return matchedChars === compactNeedle.length ? score : 0;
-}
-
-function levenshteinDistance(a: string, b: string) {
-  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  const current = Array.from({ length: b.length + 1 }, () => 0);
-
-  for (let i = 1; i <= a.length; i += 1) {
-    current[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      current[j] = Math.min(
-        (current[j - 1] ?? 0) + 1,
-        (previous[j] ?? 0) + 1,
-        (previous[j - 1] ?? 0) + cost
-      );
-    }
-    previous.splice(0, previous.length, ...current);
-  }
-
-  return previous[b.length] ?? 0;
-}
-
-function sortSearchMatches<T>(items: T[], query: string, textFor: (item: T) => string, limit?: number) {
-  const ranked = items
-    .map((item) => ({ item, score: fuzzyScore(textFor(item), query) }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  return (limit ? ranked.slice(0, limit) : ranked).map((entry) => ({ ...entry.item, score: entry.score }));
-}
-
 function rowSuggestion(row: CatalogSearchRow & { score: number }): CatalogSearchSuggestion {
   const gpuTitle = [row.brand, row.name].filter(Boolean).join(" ").trim();
   const caseTitle = [row.case_seller, row.name || row.display_name, row.case_style].filter(Boolean).join(" ").trim();
@@ -510,7 +405,7 @@ async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSear
     )
     .bind(...values)
     .all<CatalogSearchRow>();
-  const suggestions = sortSearchMatches(rows.results ?? [], options.query, rowSearchText, options.limit).map(rowSuggestion);
+  const suggestions = fuseSearchRows(rows.results ?? [], options.query, options.limit).map(rowSuggestion);
 
   return {
     source: "d1" as const,
