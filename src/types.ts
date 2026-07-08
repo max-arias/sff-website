@@ -39,6 +39,7 @@ export interface GenericPart {
   productUrl: string;
   specs: Record<string, string>;
   dimensions: Record<string, number>;
+  releaseYear: number | null;
   flags: string[];
   raw: Record<string, string>;
   links: Record<string, string>;
@@ -95,6 +96,7 @@ export interface CasePart {
     pcieSlots: number | null;
     lpPcieSlots: number | null;
   };
+  releaseYear: number | null;
   flags: string[];
   raw: Record<string, string>;
 }
@@ -118,6 +120,7 @@ export interface GpuPart {
     thicknessMm: number | null;
     pcieSlots: number | null;
   };
+  releaseYear: number | null;
   flags: string[];
   raw: Record<string, string>;
 }

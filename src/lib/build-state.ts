@@ -15,10 +15,15 @@ export interface BuildQueryState {
   page: number;
   sort: string;
   dir: "asc" | "desc";
-  maxVolumeL: number | null;
-  maxGpuLengthMm: number | null;
-  maxGpuWidthMm: number | null;
-  maxGpuHeightMm: number | null;
+  // Case numeric filters
+  caseMaxVolumeL: number | null;
+  caseMaxGpuLengthMm: number | null;
+  caseMaxGpuThicknessMm: number | null;
+  caseMaxPcieSlots: number | null;
+  // GPU numeric filters
+  gpuMaxLengthMm: number | null;
+  gpuMaxSlots: number | null;
+  gpuMaxThicknessMm: number | null;
 }
 
 export type BuildQueryPatch = Partial<{
@@ -29,10 +34,15 @@ export type BuildQueryPatch = Partial<{
   page: number;
   sort: string;
   dir: "asc" | "desc";
-  maxVolumeL: number | null;
-  maxGpuLengthMm: number | null;
-  maxGpuWidthMm: number | null;
-  maxGpuHeightMm: number | null;
+  // Case numeric filters
+  caseMaxVolumeL: number | null;
+  caseMaxGpuLengthMm: number | null;
+  caseMaxGpuThicknessMm: number | null;
+  caseMaxPcieSlots: number | null;
+  // GPU numeric filters
+  gpuMaxLengthMm: number | null;
+  gpuMaxSlots: number | null;
+  gpuMaxThicknessMm: number | null;
   resetPage: boolean;
 }>;
 
@@ -64,17 +74,25 @@ export function parseBuildQuery(url: URL): BuildQueryState {
     if (value) selectedIds[kind] = value;
   });
 
+  const sort = sanitizeSort(url.searchParams.get("sort"));
+  const dirParam = url.searchParams.get("dir");
+
   return {
     selectedIds,
     kind: sanitizeKind(url.searchParams.get("kind")) ?? inferKind(selectedIds),
     search: url.searchParams.get("search") ?? "",
     page: Math.max(1, Number(url.searchParams.get("page") ?? 1) || 1),
-    sort: sanitizeSort(url.searchParams.get("sort")),
-    dir: url.searchParams.get("dir") === "desc" ? "desc" : "asc",
-    maxVolumeL: sanitizePositiveNumber(url.searchParams.get("max-volume-l")),
-    maxGpuLengthMm: sanitizePositiveNumber(url.searchParams.get("max-gpu-length-mm")),
-    maxGpuWidthMm: sanitizePositiveNumber(url.searchParams.get("max-gpu-width-mm")),
-    maxGpuHeightMm: sanitizePositiveNumber(url.searchParams.get("max-gpu-height-mm")),
+    sort,
+    dir: dirParam === "desc" ? "desc" : dirParam === "asc" ? "asc" : (sort === "release-year" ? "desc" : "asc"),
+    // Case numeric filters
+    caseMaxVolumeL: sanitizePositiveNumber(url.searchParams.get("case-max-volume-l")),
+    caseMaxGpuLengthMm: sanitizePositiveNumber(url.searchParams.get("case-max-gpu-length-mm")),
+    caseMaxGpuThicknessMm: sanitizePositiveNumber(url.searchParams.get("case-max-gpu-thickness-mm")),
+    caseMaxPcieSlots: sanitizePositiveNumber(url.searchParams.get("case-max-pcie-slots")),
+    // GPU numeric filters
+    gpuMaxLengthMm: sanitizePositiveNumber(url.searchParams.get("max-gpu-length-mm")),
+    gpuMaxSlots: sanitizePositiveNumber(url.searchParams.get("max-gpu-slots")),
+    gpuMaxThicknessMm: sanitizePositiveNumber(url.searchParams.get("max-gpu-thickness-mm")),
   };
 }
 
@@ -87,13 +105,15 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
   const page = patch.resetPage ? 1 : (patch.page ?? state.page);
   const sort = patch.sort ?? state.sort;
   const dir = patch.dir ?? state.dir;
-  const maxVolumeL = patch.maxVolumeL === undefined ? state.maxVolumeL : patch.maxVolumeL;
-  const maxGpuLengthMm =
-    patch.maxGpuLengthMm === undefined ? state.maxGpuLengthMm : patch.maxGpuLengthMm;
-  const maxGpuWidthMm =
-    patch.maxGpuWidthMm === undefined ? state.maxGpuWidthMm : patch.maxGpuWidthMm;
-  const maxGpuHeightMm =
-    patch.maxGpuHeightMm === undefined ? state.maxGpuHeightMm : patch.maxGpuHeightMm;
+  // Case numeric filter consts
+  const caseMaxVolumeL = patch.caseMaxVolumeL === undefined ? state.caseMaxVolumeL : patch.caseMaxVolumeL;
+  const caseMaxGpuLengthMm = patch.caseMaxGpuLengthMm === undefined ? state.caseMaxGpuLengthMm : patch.caseMaxGpuLengthMm;
+  const caseMaxGpuThicknessMm = patch.caseMaxGpuThicknessMm === undefined ? state.caseMaxGpuThicknessMm : patch.caseMaxGpuThicknessMm;
+  const caseMaxPcieSlots = patch.caseMaxPcieSlots === undefined ? state.caseMaxPcieSlots : patch.caseMaxPcieSlots;
+  // GPU numeric filter consts
+  const gpuMaxLengthMm = patch.gpuMaxLengthMm === undefined ? state.gpuMaxLengthMm : patch.gpuMaxLengthMm;
+  const gpuMaxSlots = patch.gpuMaxSlots === undefined ? state.gpuMaxSlots : patch.gpuMaxSlots;
+  const gpuMaxThicknessMm = patch.gpuMaxThicknessMm === undefined ? state.gpuMaxThicknessMm : patch.gpuMaxThicknessMm;
   const params = new URLSearchParams();
 
   slotOrder.forEach(({ kind: slotKind }) => {
@@ -103,14 +123,24 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
 
   params.set("kind", kind);
   if (search.trim()) params.set("search", search.trim());
-  if (sort !== "fitment") params.set("sort", sort);
-  if (sort !== "fitment" && dir === "desc") params.set("dir", dir);
-  if (kind === "case" && maxVolumeL !== null)
-    params.set("max-volume-l", formatQueryNumber(maxVolumeL));
+  if (sort !== "release-year") params.set("sort", sort);
+  if (sort === "release-year") {
+    if (dir !== "desc") params.set("dir", dir);
+  } else {
+    if (dir === "desc") params.set("dir", dir);
+  }
+  // Case numeric filters
+  if (kind === "case") {
+    if (caseMaxVolumeL !== null) params.set("case-max-volume-l", formatQueryNumber(caseMaxVolumeL));
+    if (caseMaxGpuLengthMm !== null) params.set("case-max-gpu-length-mm", formatQueryNumber(caseMaxGpuLengthMm));
+    if (caseMaxGpuThicknessMm !== null) params.set("case-max-gpu-thickness-mm", formatQueryNumber(caseMaxGpuThicknessMm));
+    if (caseMaxPcieSlots !== null) params.set("case-max-pcie-slots", formatQueryNumber(caseMaxPcieSlots));
+  }
+  // GPU numeric filters
   if (kind === "gpu") {
-    if (maxGpuLengthMm !== null) params.set("max-gpu-length-mm", formatQueryNumber(maxGpuLengthMm));
-    if (maxGpuWidthMm !== null) params.set("max-gpu-width-mm", formatQueryNumber(maxGpuWidthMm));
-    if (maxGpuHeightMm !== null) params.set("max-gpu-height-mm", formatQueryNumber(maxGpuHeightMm));
+    if (gpuMaxLengthMm !== null) params.set("max-gpu-length-mm", formatQueryNumber(gpuMaxLengthMm));
+    if (gpuMaxSlots !== null) params.set("max-gpu-slots", formatQueryNumber(gpuMaxSlots));
+    if (gpuMaxThicknessMm !== null) params.set("max-gpu-thickness-mm", formatQueryNumber(gpuMaxThicknessMm));
   }
   if (page > 1) params.set("page", String(page));
 
@@ -129,8 +159,8 @@ function formatQueryNumber(value: number) {
 }
 
 function sanitizeSort(value: string | null) {
-  if (!value) return "fitment";
-  return /^[a-z0-9-]+$/i.test(value) ? value : "fitment";
+  if (!value) return "release-year";
+  return /^[a-z0-9-]+$/i.test(value) ? value : "release-year";
 }
 
 export function sanitizeKind(value: string | null): SelectableKind | null {

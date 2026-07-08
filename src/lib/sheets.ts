@@ -39,6 +39,24 @@ function isYes(value: string) {
   return ["y", "yes", "true", "1"].includes(value.trim().toLowerCase());
 }
 
+function parseYear(value: string): number | null {
+  const normalized = value.trim();
+  if (isUnknown(normalized)) return null;
+  const match = normalized.match(/^\d{4}$/);
+  return match ? Number(match[0]) : null;
+}
+
+function extractReleaseYear(values: Record<string, string>): number | null {
+  for (const [key, value] of Object.entries(values)) {
+    const lower = key.toLowerCase();
+    if (lower === "year" || lower === "release" || lower === "release year") {
+      const year = parseYear(value);
+      if (year !== null) return year;
+    }
+  }
+  return null;
+}
+
 export function parseNumber(value: string): number | null {
   const normalized = value.trim().toLowerCase();
   if (isUnknown(normalized) || normalized === "open") return null;
@@ -176,6 +194,7 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
     status,
     sellerUrl,
     productUrl,
+    releaseYear: extractReleaseYear(values),
     specs,
     dimensions,
     flags,
@@ -234,6 +253,7 @@ function normalizeCase(raw: RawSheetRow): CasePart {
     status,
     gpuRiser,
     psu: cell(values, "PSU"),
+    releaseYear: extractReleaseYear(values),
     dimensions: {
       lengthMm: parseNumber(cell(values, "Case Length (mm)")),
       widthMm: parseNumber(cell(values, "Case Width (mm)")),
@@ -288,6 +308,7 @@ function normalizeGpu(raw: RawSheetRow): GpuPart {
     watercooled,
     pciePins,
     tdpW: parseNumber(cell(values, "TDP (W)")),
+    releaseYear: extractReleaseYear(values),
     dimensions: {
       lengthMm: parseNumber(cell(values, "Length (mm)")),
       widthMm: parseNumber(cell(values, "Width (mm)")),

@@ -1,11 +1,33 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { getBuildView } from "../server/build-view";
+import { buildUrl } from "../lib/build-state";
 
 const view = await getBuildView(Astro, Astro.url);
 const numericFilterNames = new Set(view.numericFilters.map((filter) => filter.name));
 const numericFilterHiddenInputs = view.hiddenInputs.filter((input) => !numericFilterNames.has(input.name as never));
 const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active);
+
+type PageItem =
+  | { type: "page"; page: number; url: string }
+  | { type: "ellipsis" };
+
+const currentPage = view.state.page;
+const totalPages = view.pageCount;
+const pageItems: PageItem[] = [];
+if (totalPages <= 7) {
+  for (let i = 1; i <= totalPages; i++) {
+    pageItems.push({ type: "page", page: i, url: buildUrl(view.state, { page: i }) });
+  }
+} else {
+  pageItems.push({ type: "page", page: 1, url: buildUrl(view.state, { page: 1 }) });
+  if (currentPage > 3) pageItems.push({ type: "ellipsis" });
+  for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+    pageItems.push({ type: "page", page: i, url: buildUrl(view.state, { page: i }) });
+  }
+  if (currentPage < totalPages - 2) pageItems.push({ type: "ellipsis" });
+  pageItems.push({ type: "page", page: totalPages, url: buildUrl(view.state, { page: totalPages }) });
+}
 ---
 
 <BaseLayout
@@ -50,7 +72,7 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
           <div>
             <h1>Current Build</h1>
             <p>
-              Compatibility status:
+              Status:
               <strong class={`text-${view.buildStatus === "in-progress" ? "conditional" : view.buildStatus}`}>
                 {view.buildStatusLabel}
               </strong>
@@ -72,7 +94,8 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
                 `slot-card--${slot.verdict}`,
                 {
                   "slot-card--empty": !slot.id,
-                  "slot-card--unresolved": slot.state === "unresolved"
+                  "slot-card--unresolved": slot.state === "unresolved",
+                  "slot-card--active": slot.kind === view.state.kind
                 }
               ]}
             >
@@ -133,43 +156,6 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
       </aside>
 
       <section class="main-panel">
-
-        <div class="main-panel__header">
-          <div>
-            <h2>Hardware Library</h2>
-            <p>Active constraints: <strong>{view.activeConstraintLabel}</strong></p>
-          </div>
-
-          <div class="toolbar">
-            <form class="search-field" method="GET" action={view.searchAction} data-autosubmit-form>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.5"></circle>
-                <path d="M16 16l5 5"></path>
-              </svg>
-              {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-              <input name="search" value={view.state.search} type="search" placeholder="Search models..." data-autosubmit-input />
-            </form>
-          </div>
-        </div>
-
-        {view.tableNotice && <div class="table-notice">{view.tableNotice}</div>}
-
-        {view.activeFilterChips && view.activeFilterChips.length > 0 && (
-          <div class="filter-chips">
-            {view.activeFilterChips.map((chip) => (
-              <a href={chip.href} class:list={["filter-chip", { "filter-chip--context": chip.tone === "neutral" }]}>
-                {chip.label}
-                {chip.tone !== "neutral" && (
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M18 6L6 18M6 6l12 12"></path>
-                  </svg>
-                )}
-              </a>
-            ))}
-          </div>
-        )}
-
-
         <div class="kind-tabs" role="tablist" aria-label="Part kinds">
           {view.kindTabs.map((tab) => (
             <a class:list={["kind-tab", { "kind-tab--active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
@@ -178,15 +164,20 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
           ))}
         </div>
 
-        {view.numericFilters.length > 0 && (
-          <form class="numeric-filters" method="GET" action={view.searchAction} data-numeric-filter-form>
-            {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-            {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
-            <div class="numeric-filters__header">
-              <span>Table filters</span>
-              {hasActiveNumericFilter && <a href={view.clearFiltersUrl}>Clear</a>}
-            </div>
-            <div class="numeric-filters__grid">
+        <div class="filter-bar">
+          <form class="filter-bar__search" method="GET" action={view.searchAction} data-autosubmit-form>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5"></circle>
+              <path d="M16 16l5 5"></path>
+            </svg>
+            {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+            <input name="search" value={view.state.search} type="search" placeholder="Search models..." data-autosubmit-input />
+          </form>
+
+          {view.numericFilters.length > 0 && (
+            <form class="numeric-filters" method="GET" action={view.searchAction} data-numeric-filter-form>
+              {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+              {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
               {view.numericFilters.map((filter) => (
                 <label class:list={["numeric-filter", { "numeric-filter--active": filter.active }]} data-numeric-filter>
                   <span class="numeric-filter__label">{filter.label}</span>
@@ -216,9 +207,31 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
                   </span>
                 </label>
               ))}
-            </div>
-          </form>
+            </form>
+          )}
+
+          {hasActiveNumericFilter && (
+            <a class="filter-bar__clear" href={view.clearFiltersUrl}>Clear filters</a>
+          )}
+        </div>
+
+        {view.activeFilterChips && view.activeFilterChips.length > 0 && (
+          <div class="filter-chips">
+            <span class="filter-chips__label">Showing results for:</span>
+            {view.activeFilterChips.map((chip) => (
+              <a href={chip.href} class:list={["filter-chip", { "filter-chip--context": chip.tone === "neutral" }]}>
+                {chip.label}
+                {chip.tone !== "neutral" && (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18 6L6 18M6 6l12 12"></path>
+                  </svg>
+                )}
+              </a>
+            ))}
+          </div>
         )}
+
+        {view.tableNotice && <div class="table-notice">{view.tableNotice}</div>}
 
         <div class="table-shell">
           <div class="table-scroll">
@@ -255,7 +268,12 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
                         <span class="th-with-help">
                           <a class:list={["sort-link", { "sort-link--active": header.sortDir }]} href={header.sortUrl}>
                             <span>{header.label}</span>
-                            <span class="sort-link__indicator" aria-hidden="true">{header.sortDir === "asc" ? "↑" : header.sortDir === "desc" ? "↓" : "↕"}</span>
+                            <span class="sort-link__indicator" aria-hidden="true">
+                              <svg width="10" height="14" viewBox="0 0 10 14">
+                                <path d="M5 3L2 7h6L5 3z" fill="currentColor" opacity={header.sortDir === "asc" ? "1" : "0.25"} />
+                                <path d="M5 11l3-4H2l3 4z" fill="currentColor" opacity={header.sortDir === "desc" ? "1" : "0.25"} />
+                              </svg>
+                            </span>
                           </a>
                           {view.state.kind === "psu" && header.label === "Tier" && (
                             <span class="info-trigger" tabindex="0" aria-label="About PSU tier ratings">
@@ -307,11 +325,44 @@ const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.activ
           </div>
 
           <footer class="table-footer">
-            <span>{view.displayStart}-{view.displayEnd} of {view.totalRows} rows</span>
+            <span class="table-footer__count">{view.displayStart}-{view.displayEnd} of {view.totalRows} rows</span>
             <div class="pager">
-              <a class:list={["button", "button--ghost", { "button--disabled": view.state.page <= 1 }]} href={view.previousUrl}>Previous</a>
-              <strong>Page {view.state.page} / {view.pageCount}</strong>
-              <a class:list={["button", "button--ghost", { "button--disabled": view.state.page >= view.pageCount }]} href={view.nextUrl}>Next</a>
+              <a
+                class:list={["pager__arrow", { "pager__arrow--disabled": view.state.page <= 1 }]}
+                href={view.previousUrl}
+                aria-label="Previous page"
+                aria-disabled={view.state.page <= 1 ? "true" : undefined}
+                tabindex={view.state.page <= 1 ? -1 : undefined}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                  <path d="M9 2L4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </a>
+              {pageItems.map((item) => (
+                item.type === "ellipsis" ? (
+                  <span class="pager__ellipsis">...</span>
+                ) : (
+                  <a
+                    class:list={["pager__page", { "pager__page--current": item.page === currentPage }]}
+                    href={item.url}
+                    aria-label={`Page ${item.page}`}
+                    aria-current={item.page === currentPage ? "page" : undefined}
+                  >
+                    {item.page}
+                  </a>
+                )
+              ))}
+              <a
+                class:list={["pager__arrow", { "pager__arrow--disabled": view.state.page >= view.pageCount }]}
+                href={view.nextUrl}
+                aria-label="Next page"
+                aria-disabled={view.state.page >= view.pageCount ? "true" : undefined}
+                tabindex={view.state.page >= view.pageCount ? -1 : undefined}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                  <path d="M5 2l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </a>
             </div>
           </footer>
         </div>

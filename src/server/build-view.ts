@@ -58,9 +58,10 @@ export interface BuildViewRow {
   note: string;
   selected: boolean;
   actionLabel: string;
-  actionTone: "add" | "remove";
+  actionTone: "add" | "remove" | "swap";
   actionUrl: string;
   highlightCellIndex: number | null;
+  releaseYear: number | null;
   mobileMetrics: Array<{ label: string; value: string; alert: boolean }>;
 }
 
@@ -73,9 +74,9 @@ export interface BuildViewTableHeader {
 }
 
 export interface BuildViewNumericFilter {
-  name: "max-volume-l" | "max-gpu-length-mm" | "max-gpu-width-mm" | "max-gpu-height-mm";
+  name: "case-max-volume-l" | "case-max-gpu-length-mm" | "case-max-gpu-thickness-mm" | "case-max-pcie-slots" | "max-gpu-length-mm" | "max-gpu-slots" | "max-gpu-thickness-mm";
   label: string;
-  unit: "L" | "mm";
+  unit: "L" | "mm" | "slots";
   max: number;
   step: number;
   value: number;
@@ -182,9 +183,23 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
     activeMotherboard,
     activeRam,
   };
+
+  // Auto-populate GPU numeric filter defaults from the active case
+  if (state.kind === "gpu" && activeCase) {
+    if (state.gpuMaxLengthMm === null && activeCase.dimensions.gpuLengthMm != null) {
+      state.gpuMaxLengthMm = activeCase.dimensions.gpuLengthMm;
+    }
+    if (state.gpuMaxSlots === null && activeCase.dimensions.pcieSlots != null) {
+      state.gpuMaxSlots = activeCase.dimensions.pcieSlots;
+    }
+    if (state.gpuMaxThicknessMm === null && activeCase.dimensions.gpuThicknessMm != null) {
+      state.gpuMaxThicknessMm = activeCase.dimensions.gpuThicknessMm;
+    }
+  }
+
   const { candidates, totalRows } = await loadCandidates(context, state, parts);
   const builtRows = candidates.map((part) => buildRow(ctx, part));
-  const sortedRows = state.search.trim() && state.sort === "fitment"
+  const sortedRows = state.search.trim() && state.sort === "release-year"
     ? builtRows
     : builtRows.sort((a, b) => rowSort(a, b, state));
   const rows = sortedRows.slice(
@@ -224,10 +239,13 @@ export async function getBuildView(context: APIContext, url: URL): Promise<Build
     hiddenInputs: searchHiddenInputs(state),
     numericFilters: numericFilters(state, parts),
     clearFiltersUrl: buildUrl(state, {
-      maxVolumeL: null,
-      maxGpuLengthMm: null,
-      maxGpuWidthMm: null,
-      maxGpuHeightMm: null,
+      caseMaxVolumeL: null,
+      caseMaxGpuLengthMm: null,
+      caseMaxGpuThicknessMm: null,
+      caseMaxPcieSlots: null,
+      gpuMaxLengthMm: null,
+      gpuMaxSlots: null,
+      gpuMaxThicknessMm: null,
       resetPage: true,
     }),
     tableHeaders: tableHeaders(state),
@@ -282,14 +300,19 @@ async function loadCandidates(
 function applyNumericFilters(parts: Array<CasePart | GpuPart>, state: BuildQueryState) {
   return parts.filter((part) => {
     if (isCasePart(part)) {
-      return withinMax(part.dimensions.volumeL, state.maxVolumeL);
+      return (
+        withinMax(part.dimensions.volumeL, state.caseMaxVolumeL) &&
+        withinMax(part.dimensions.gpuLengthMm, state.caseMaxGpuLengthMm) &&
+        withinMax(part.dimensions.gpuThicknessMm, state.caseMaxGpuThicknessMm) &&
+        withinMax(part.dimensions.pcieSlots, state.caseMaxPcieSlots)
+      );
     }
 
     if (isGpuPart(part)) {
       return (
-        withinMax(part.dimensions.lengthMm, state.maxGpuLengthMm) &&
-        withinMax(part.dimensions.widthMm, state.maxGpuWidthMm) &&
-        withinMax(part.dimensions.thicknessMm, state.maxGpuHeightMm)
+        withinMax(part.dimensions.lengthMm, state.gpuMaxLengthMm) &&
+        withinMax(part.dimensions.pcieSlots, state.gpuMaxSlots) &&
+        withinMax(part.dimensions.thicknessMm, state.gpuMaxThicknessMm)
       );
     }
 
@@ -341,6 +364,10 @@ function isGenericPart(part: PartRecord): part is GenericPart {
   return "displayName" in part;
 }
 
+function partReleaseYear(part: PartRecord): number | null {
+  return part.releaseYear ?? null;
+}
+
 type EvalContext = {
   state: BuildQueryState;
   partIndex: Map<string, PartRecord>;
@@ -381,6 +408,7 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
 function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
   const kind = part.kind as SelectableKind;
   const selected = ctx.state.selectedIds[kind] === part.id;
+  const hasSelection = Boolean(ctx.state.selectedIds[kind]);
   const fitment = evaluateCandidateFitment(ctx, part);
   const note = fitment.messages[0] || fitment.notes[0] || fallbackNote(ctx, part);
   const cells = metricCells(part);
@@ -401,12 +429,13 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     verdictLabel: verdictLabel(fitment.verdict),
     note,
     selected,
-    actionLabel: selected ? "Remove" : "Add",
-    actionTone: selected ? "remove" : "add",
+    actionLabel: selected ? "Remove" : hasSelection ? "Swap" : "Add",
+    actionTone: selected ? "remove" : hasSelection ? "swap" : "add",
     actionUrl: selected
       ? buildUrl(ctx.state, { clearSlot: kind, resetPage: true })
       : buildUrl(ctx.state, { selectedIds: { [kind]: part.id }, search: "", resetPage: true }),
     highlightCellIndex: fitment.highlightCellIndex,
+    releaseYear: partReleaseYear(part),
   };
 }
 
@@ -432,6 +461,7 @@ function sortValue(row: BuildViewRow, key: string) {
   if (key === "status") return verdictRank(row.verdict);
   if (key === "name") return row.title;
   if (key === "notes") return row.note;
+  if (key === "release-year") return row.releaseYear ?? "";
   const metricMatch = key.match(/^metric-(\d+)$/);
   if (metricMatch) return row.cells[Number(metricMatch[1])] ?? "";
   return row.title;
@@ -520,8 +550,10 @@ function searchHiddenInputs(state: BuildQueryState) {
     const value = state.selectedIds[kind];
     if (value) inputs.push({ name: kind, value });
   });
-  if (state.sort !== "fitment") inputs.push({ name: "sort", value: state.sort });
-  if (state.sort !== "fitment" && state.dir === "desc")
+  if (state.sort !== "release-year") inputs.push({ name: "sort", value: state.sort });
+  if (state.sort !== "release-year" && state.dir === "desc")
+    inputs.push({ name: "dir", value: state.dir });
+  if (state.sort === "release-year" && state.dir !== "desc")
     inputs.push({ name: "dir", value: state.dir });
   numericFilterInputs(state).forEach((input) => inputs.push(input));
   return inputs;
@@ -529,15 +561,23 @@ function searchHiddenInputs(state: BuildQueryState) {
 
 function numericFilterInputs(state: BuildQueryState) {
   const inputs: Array<{ name: string; value: string }> = [];
-  if (state.kind === "case" && state.maxVolumeL !== null)
-    inputs.push({ name: "max-volume-l", value: formatQueryNumber(state.maxVolumeL) });
+  if (state.kind === "case") {
+    if (state.caseMaxVolumeL !== null)
+      inputs.push({ name: "case-max-volume-l", value: formatQueryNumber(state.caseMaxVolumeL) });
+    if (state.caseMaxGpuLengthMm !== null)
+      inputs.push({ name: "case-max-gpu-length-mm", value: formatQueryNumber(state.caseMaxGpuLengthMm) });
+    if (state.caseMaxGpuThicknessMm !== null)
+      inputs.push({ name: "case-max-gpu-thickness-mm", value: formatQueryNumber(state.caseMaxGpuThicknessMm) });
+    if (state.caseMaxPcieSlots !== null)
+      inputs.push({ name: "case-max-pcie-slots", value: formatQueryNumber(state.caseMaxPcieSlots) });
+  }
   if (state.kind === "gpu") {
-    if (state.maxGpuLengthMm !== null)
-      inputs.push({ name: "max-gpu-length-mm", value: formatQueryNumber(state.maxGpuLengthMm) });
-    if (state.maxGpuWidthMm !== null)
-      inputs.push({ name: "max-gpu-width-mm", value: formatQueryNumber(state.maxGpuWidthMm) });
-    if (state.maxGpuHeightMm !== null)
-      inputs.push({ name: "max-gpu-height-mm", value: formatQueryNumber(state.maxGpuHeightMm) });
+    if (state.gpuMaxLengthMm !== null)
+      inputs.push({ name: "max-gpu-length-mm", value: formatQueryNumber(state.gpuMaxLengthMm) });
+    if (state.gpuMaxSlots !== null)
+      inputs.push({ name: "max-gpu-slots", value: formatQueryNumber(state.gpuMaxSlots) });
+    if (state.gpuMaxThicknessMm !== null)
+      inputs.push({ name: "max-gpu-thickness-mm", value: formatQueryNumber(state.gpuMaxThicknessMm) });
   }
   return inputs;
 }
@@ -547,36 +587,26 @@ function numericFilters(
   parts: Awaited<ReturnType<typeof loadParts>>,
 ): BuildViewNumericFilter[] {
   if (state.kind === "case") {
-    const max = maxDimension(parts.cases.map((part) => part.dimensions.volumeL));
-    return [makeNumericFilter("max-volume-l", "Max volume", "L", max, 0.5, state.maxVolumeL)];
+    const maxVolume = maxDimension(parts.cases.map((p) => p.dimensions.volumeL));
+    const maxGpuLen = maxDimension(parts.cases.map((p) => p.dimensions.gpuLengthMm));
+    const maxGpuThick = maxDimension(parts.cases.map((p) => p.dimensions.gpuThicknessMm));
+    const maxPcieSlots = maxDimension(parts.cases.map((p) => p.dimensions.pcieSlots));
+    return [
+      makeNumericFilter("case-max-volume-l", "Max volume", "L", maxVolume, 0.5, state.caseMaxVolumeL),
+      makeNumericFilter("case-max-gpu-length-mm", "Max GPU length", "mm", maxGpuLen, 1, state.caseMaxGpuLengthMm),
+      makeNumericFilter("case-max-gpu-thickness-mm", "Max GPU thickness", "mm", maxGpuThick, 1, state.caseMaxGpuThicknessMm),
+      makeNumericFilter("case-max-pcie-slots", "Max PCIe slots", "slots", maxPcieSlots, 1, state.caseMaxPcieSlots),
+    ];
   }
 
   if (state.kind === "gpu") {
+    const maxLength = maxDimension(parts.gpus.map((p) => p.dimensions.lengthMm));
+    const maxSlots = maxDimension(parts.gpus.map((p) => p.dimensions.pcieSlots));
+    const maxThickness = maxDimension(parts.gpus.map((p) => p.dimensions.thicknessMm));
     return [
-      makeNumericFilter(
-        "max-gpu-length-mm",
-        "Max GPU length",
-        "mm",
-        maxDimension(parts.gpus.map((part) => part.dimensions.lengthMm)),
-        1,
-        state.maxGpuLengthMm,
-      ),
-      makeNumericFilter(
-        "max-gpu-width-mm",
-        "Max GPU width",
-        "mm",
-        maxDimension(parts.gpus.map((part) => part.dimensions.widthMm)),
-        1,
-        state.maxGpuWidthMm,
-      ),
-      makeNumericFilter(
-        "max-gpu-height-mm",
-        "Max GPU height",
-        "mm",
-        maxDimension(parts.gpus.map((part) => part.dimensions.thicknessMm)),
-        1,
-        state.maxGpuHeightMm,
-      ),
+      makeNumericFilter("max-gpu-length-mm", "Max GPU length", "mm", maxLength, 1, state.gpuMaxLengthMm),
+      makeNumericFilter("max-gpu-slots", "Max GPU slots", "slots", maxSlots, 1, state.gpuMaxSlots),
+      makeNumericFilter("max-gpu-thickness-mm", "Max GPU thickness", "mm", maxThickness, 1, state.gpuMaxThicknessMm),
     ];
   }
 
@@ -764,10 +794,10 @@ function buildFilterChips(state: BuildQueryState): BuildView["activeFilterChips"
     });
   }
 
-  if (state.sort !== "fitment") {
+  if (state.sort !== "release-year") {
     chips.push({
       label: `Sort: ${state.sort}`,
-      href: buildUrl(state, { sort: "fitment", dir: "asc", resetPage: true }),
+      href: buildUrl(state, { sort: "release-year", dir: "desc", resetPage: true }),
       tone: "active",
     });
   }
@@ -780,33 +810,58 @@ function buildFilterChips(state: BuildQueryState): BuildView["activeFilterChips"
     });
   }
 
-  if (state.kind === "case" && state.maxVolumeL !== null) {
-    chips.push({
-      label: `Max volume: ${state.maxVolumeL}L`,
-      href: buildUrl(state, { maxVolumeL: null, resetPage: true }),
-      tone: "active",
-    });
+  // Case filter chips
+  if (state.kind === "case") {
+    if (state.caseMaxVolumeL !== null) {
+      chips.push({
+        label: `Max volume: ${state.caseMaxVolumeL}L`,
+        href: buildUrl(state, { caseMaxVolumeL: null, resetPage: true }),
+        tone: "active",
+      });
+    }
+    if (state.caseMaxGpuLengthMm !== null) {
+      chips.push({
+        label: `Max GPU length: ${state.caseMaxGpuLengthMm}mm`,
+        href: buildUrl(state, { caseMaxGpuLengthMm: null, resetPage: true }),
+        tone: "active",
+      });
+    }
+    if (state.caseMaxGpuThicknessMm !== null) {
+      chips.push({
+        label: `Max GPU thickness: ${state.caseMaxGpuThicknessMm}mm`,
+        href: buildUrl(state, { caseMaxGpuThicknessMm: null, resetPage: true }),
+        tone: "active",
+      });
+    }
+    if (state.caseMaxPcieSlots !== null) {
+      chips.push({
+        label: `Max PCIe slots: ${state.caseMaxPcieSlots}`,
+        href: buildUrl(state, { caseMaxPcieSlots: null, resetPage: true }),
+        tone: "active",
+      });
+    }
   }
 
+  // GPU filter chips
   if (state.kind === "gpu") {
-    if (state.maxGpuLengthMm !== null) {
+    if (state.gpuMaxLengthMm !== null) {
       chips.push({
-        label: `Max length: ${state.maxGpuLengthMm}mm`,
-        href: buildUrl(state, { maxGpuLengthMm: null, resetPage: true }),
+        label: `Max GPU length: ${state.gpuMaxLengthMm}mm`,
+        href: buildUrl(state, { gpuMaxLengthMm: null, resetPage: true }),
         tone: "active",
       });
     }
-    if (state.maxGpuWidthMm !== null) {
+    if (state.gpuMaxSlots !== null) {
       chips.push({
-        label: `Max width: ${state.maxGpuWidthMm}mm`,
-        href: buildUrl(state, { maxGpuWidthMm: null, resetPage: true }),
+        label: `Max GPU slots: ${state.gpuMaxSlots}`,
+        href: buildUrl(state, { gpuMaxSlots: null, resetPage: true }),
         tone: "active",
       });
     }
-    if (state.maxGpuHeightMm !== null) {
+    if (state.gpuMaxThicknessMm !== null) {
       chips.push({
-        label: `Max height: ${state.maxGpuHeightMm}mm`,
-        href: buildUrl(state, { maxGpuHeightMm: null, resetPage: true }),
+        label: `Max GPU thickness: ${state.gpuMaxThicknessMm}mm`,
+        href: buildUrl(state, { gpuMaxThicknessMm: null, resetPage: true }),
         tone: "active",
       });
     }
@@ -907,14 +962,10 @@ function metricCells(part: PartRecord) {
 
 function fallbackNote(ctx: EvalContext, part: PartRecord) {
   if (isCasePart(part)) {
-    return hasActiveCaseConstraint(ctx)
-      ? "No immediate issues in the active fitment rules."
-      : "";
+    return "";
   }
   if (isGpuPart(part)) {
-    return ctx.activeCase
-      ? "No immediate issues in the active fitment rules."
-      : "";
+    return "";
   }
   if (isGenericPart(part) && part.kind === "cpu-cooler") {
     return compactJoin([
@@ -998,7 +1049,6 @@ function evaluateGpuAgainstCase(gpu: GpuPart, casePart: CasePart): FitmentCheck[
     "tight-gpuLengthMm",
     "tight-gpuWidthMm",
     "tight-gpuThicknessMm",
-    "tight-pcieSlots",
   ]);
   return result.issues.map((issue) => ({
     verdict:

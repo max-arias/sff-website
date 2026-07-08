@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { searchCatalog } from "../server/d1";
 
 const quickSearchTerms = [
   { label: "FormD T1", kind: "case" },
@@ -8,6 +9,37 @@ const quickSearchTerms = [
   { label: "NH-L9i", kind: "cpu-cooler" },
   { label: "SF750", kind: "psu" }
 ];
+
+interface QuickSearchLink {
+  label: string;
+  kind: string;
+  href: string;
+}
+
+const quickSearchLinks: QuickSearchLink[] = [];
+
+for (const term of quickSearchTerms) {
+  let href = "";
+  try {
+    const result = await searchCatalog(undefined, { query: term.label, kind: term.kind, limit: 1 });
+    const suggestion = result.suggestions?.[0];
+    if (suggestion) {
+      const params = new URLSearchParams();
+      params.set(suggestion.kind, suggestion.id);
+      if (suggestion.kind === "case") {
+        params.set("kind", "gpu");
+      } else if (suggestion.kind === "gpu") {
+        params.set("kind", "case");
+      } else {
+        params.set("kind", suggestion.kind);
+      }
+      href = `/build?${params.toString()}`;
+    }
+  } catch {
+    // DB unavailable — link stays empty, will fall back to button
+  }
+  quickSearchLinks.push({ label: term.label, kind: term.kind, href });
+}
 
 const launchPaths = [
   {
@@ -69,17 +101,23 @@ const launchPaths = [
             </form>
 
             <div class="mt-5 flex flex-wrap gap-2">
-              {quickSearchTerms.map((term) => (
-                <button
-                  type="button"
-                  class="spec-chip"
-                  data-suggested-part
-                  data-launch-query={term.label}
-                  data-launch-kind={term.kind}
-                >
-                  {term.label}
-                </button>
-              ))}
+              {quickSearchLinks.map((link) =>
+                link.href ? (
+                  <a href={link.href} class="spec-chip">
+                    {link.label}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    class="spec-chip"
+                    data-suggested-part
+                    data-launch-query={link.label}
+                    data-launch-kind={link.kind}
+                  >
+                    {link.label}
+                  </button>
+                )
+              )}
             </div>
 
             <div class="mt-8 border-t border-line/80 pt-5 text-[1.05rem] text-ink-soft">

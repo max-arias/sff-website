@@ -17,8 +17,11 @@ function compareMax(
   key: keyof CompatibilityResult["clearances"],
   label: string,
   used: number | null,
-  limit: number | null
+  limit: number | null,
+  opts?: { tightFitThreshold?: number }
 ) {
+  const tightFitThreshold = opts?.tightFitThreshold ?? TIGHT_FIT_MM;
+
   if (used === null || limit === null) {
     addIssue(
       issues,
@@ -38,7 +41,7 @@ function compareMax(
     return;
   }
 
-  if (clearance <= TIGHT_FIT_MM) {
+  if (tightFitThreshold > 0 && clearance <= tightFitThreshold) {
     addIssue(issues, `tight-${key}`, "warning", `${label} has only ${clearance}mm of clearance.`);
   }
 }
@@ -107,7 +110,7 @@ export function checkCaseGpuCompatibility(
     addIssue(issues, "case-status", "warning", `Case status from source list: ${casePart.status}.`);
   }
 
-  compareMax(issues, clearances, "gpuLengthMm", "GPU length", gpuPart.dimensions.lengthMm, casePart.dimensions.gpuLengthMm);
+  compareMax(issues, clearances, "gpuLengthMm", "GPU length", gpuPart.dimensions.lengthMm, casePart.dimensions.gpuLengthMm, { tightFitThreshold: 2 });
   compareMax(issues, clearances, "gpuWidthMm", "GPU width", gpuPart.dimensions.widthMm, casePart.dimensions.gpuWidthMm);
   compareMax(
     issues,
@@ -117,7 +120,7 @@ export function checkCaseGpuCompatibility(
     gpuPart.dimensions.thicknessMm,
     casePart.dimensions.gpuThicknessMm
   );
-  compareMax(issues, clearances, "pcieSlots", "PCIe bracket slot count", gpuPart.dimensions.pcieSlots, casePart.dimensions.pcieSlots);
+  compareMax(issues, clearances, "pcieSlots", "PCIe bracket slot count", gpuPart.dimensions.pcieSlots, casePart.dimensions.pcieSlots, { tightFitThreshold: 0 });
 
   const hasError = issues.some((issue) => issue.severity === "error");
   const hasWarning = issues.some((issue) => issue.severity === "warning");

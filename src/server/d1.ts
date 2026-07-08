@@ -151,7 +151,7 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
     const { where, values } = buildCatalogWhere(options);
     const orderBy = options.kind === "psu"
       ? "order by case when psu_tier_rank is null then 99 else psu_tier_rank end, display_name"
-      : "order by kind, display_name";
+      : "order by release_year desc, kind, display_name";
     const rows = await db
       .prepare(`select * from sff_parts ${where} ${orderBy} limit ? offset ?`)
       .bind(...values, options.pageSize, offset)
@@ -215,6 +215,7 @@ function rowToCase(row: Record<string, unknown>): CasePart {
       lpPcieSlots: nullableNumber(row.case_lp_pcie_slots ?? row.lp_pcie_slots)
     },
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    releaseYear: nullableNumber(row.release_year),
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
   };
 }
@@ -240,6 +241,7 @@ function rowToGpu(row: Record<string, unknown>): GpuPart {
       pcieSlots: nullableNumber(row.gpu_pcie_slots ?? row.pcie_slots)
     },
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    releaseYear: nullableNumber(row.release_year),
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>
   };
 }
@@ -286,6 +288,7 @@ function rowToGenericPart(row: Record<string, unknown>): GenericPart {
     specs,
     dimensions,
     flags: JSON.parse(String(row.flags_json ?? "[]")) as string[],
+    releaseYear: nullableNumber(row.release_year),
     raw: JSON.parse(String(row.raw_json ?? "{}")) as Record<string, string>,
     links: JSON.parse(String(row.links_json ?? "{}")) as Record<string, string>
   };
