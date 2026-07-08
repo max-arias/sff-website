@@ -42,6 +42,7 @@ export interface BuildViewSlot {
   note: string;
   verdict: DisplayVerdict;
   verdictCopy: string;
+  verdictTooltip: string;
   specs: SlotSpec[];
   clearUrl: string;
   browseUrl: string;
@@ -55,6 +56,7 @@ export interface BuildViewRow {
   cells: string[];
   verdict: DisplayVerdict;
   verdictLabel: string;
+  verdictTooltip: string;
   note: string;
   selected: boolean;
   actionLabel: string;
@@ -399,6 +401,7 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
         : slotNote(ctx, kind),
     verdict,
     verdictCopy: verdictCopy(verdict),
+    verdictTooltip: verdictTooltip(verdict),
     specs: slotSpecs(ctx, kind, part),
     clearUrl: buildUrl(ctx.state, { clearSlot: kind, resetPage: true }),
     browseUrl: buildUrl(ctx.state, { kind, resetPage: true }),
@@ -427,6 +430,7 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     })),
     verdict: fitment.verdict,
     verdictLabel: verdictLabel(fitment.verdict),
+    verdictTooltip: verdictTooltip(fitment.verdict),
     note,
     selected,
     actionLabel: selected ? "Remove" : hasSelection ? "Swap" : "Add",
@@ -504,9 +508,9 @@ function getBuildStatus(
 
 function buildStatusCopy(status: BuildStatus) {
   if (status === "in-progress") return "";
-  if (status === "pass") return "Known dimensions fit within the active build.";
-  if (status === "conditional") return "This build has warnings or uncertain fitment data.";
-  return "This build contains at least one known hard conflict.";
+  if (status === "pass") return "All known dimensions fit.";
+  if (status === "conditional") return "Build has warnings — tight clearances, missing data, or practical risks.";
+  return "Build contains at least one hard dimensional conflict.";
 }
 
 function buildIssues(
@@ -1325,14 +1329,21 @@ function verdictRank(verdict: DisplayVerdict) {
 }
 
 function verdictLabel(verdict: DisplayVerdict) {
-  return verdict === "unscored" ? "UNSCORED" : verdict.toUpperCase();
+  return verdict === "unscored" ? "CLEAR" : verdict.toUpperCase();
 }
 
 function verdictCopy(verdict: DisplayVerdict) {
   if (verdict === "pass") return "Known fit";
   if (verdict === "conditional") return "Caution";
   if (verdict === "fail") return "Conflict";
-  return "Not yet evaluated";
+  return "No conflicts found";
+}
+
+function verdictTooltip(verdict: DisplayVerdict) {
+  if (verdict === "pass") return "Dimensions fit within known tolerances.";
+  if (verdict === "conditional") return "May fit — check warnings for tight clearances or missing data.";
+  if (verdict === "fail") return "Physical dimensions conflict.";
+  return "No dimensional conflicts found.";
 }
 
 function hasActiveCaseConstraint(ctx: EvalContext) {

@@ -37,6 +37,11 @@ export function initAutocomplete() {
 
     if (!input || !panel || !status || !results) return;
 
+    panel.setAttribute("role", "listbox");
+    panel.setAttribute("aria-busy", "false");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
     let debounceTimer = 0;
     let activeRequest = 0;
     let suggestions: CatalogSuggestion[] = [];
@@ -58,13 +63,14 @@ export function initAutocomplete() {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "autocomplete-result";
+        button.setAttribute("role", "option");
 
         const title = document.createElement("strong");
-        title.className = "text-sm font-semibold text-ink";
+        title.className = "text-sm font-semibold text-base-content";
         title.textContent = suggestion.displayName;
 
         const meta = document.createElement("span");
-        meta.className = "font-mono text-[0.7rem] uppercase tracking-[0.16em] text-ink-faint";
+        meta.className = "font-mono text-[0.7rem] uppercase tracking-[0.16em] text-base-content/50";
         meta.textContent = `${suggestion.kind} / ${suggestion.sourceSheet} #${suggestion.rowNumber}`;
 
         button.appendChild(title);
@@ -79,7 +85,7 @@ export function initAutocomplete() {
 
     const fetchSuggestions = async () => {
       const query = input.value.trim();
-      if (query.length < 3) {
+      if (query.length < 2) {
         suggestions = [];
         closePanel();
         return;
@@ -90,6 +96,7 @@ export function initAutocomplete() {
       if (kind) params.set("kind", kind);
 
       openPanel();
+      panel.setAttribute("aria-busy", "true");
       setStatus("Searching components...");
 
       try {
@@ -98,6 +105,7 @@ export function initAutocomplete() {
         const payload = (await response.json()) as { suggestions?: CatalogSuggestion[] };
         if (requestId !== activeRequest) return;
 
+        panel.setAttribute("aria-busy", "false");
         suggestions = payload.suggestions ?? [];
         if (!suggestions.length) {
           setStatus("No matching components found.");
@@ -107,7 +115,10 @@ export function initAutocomplete() {
         status.textContent = `${suggestions.length} component${suggestions.length === 1 ? "" : "s"} found`;
         renderSuggestions();
       } catch {
-        if (requestId === activeRequest) setStatus("Search is unavailable right now.");
+        if (requestId === activeRequest) {
+          panel.setAttribute("aria-busy", "false");
+          setStatus("Search is unavailable right now.");
+        }
       }
     };
 
@@ -117,7 +128,7 @@ export function initAutocomplete() {
     });
 
     input.addEventListener("focus", () => {
-      if (input.value.trim().length >= 3) void fetchSuggestions();
+      if (input.value.trim().length >= 2) void fetchSuggestions();
     });
 
     input.addEventListener("keydown", (event) => {
@@ -147,5 +158,5 @@ function toBuildUrl(suggestion: CatalogSuggestion | undefined, query: string, la
     if (query) params.set("search", query);
   }
   const suffix = params.toString();
-  return suffix ? `/build?${suffix}` : "/build";
+  return suffix ? `/?${suffix}` : "/";
 }
