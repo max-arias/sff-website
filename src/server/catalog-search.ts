@@ -6,17 +6,7 @@ import Fuse from "fuse.js";
 
 export interface CatalogSearchRow {
   id: string;
-  kind: string;
-  source_sheet: string;
-  source_row_number: number;
-  brand: string;
-  name: string;
-  display_name: string;
-  status: string;
-  gpu_chipset: string;
-  gpu_model: string;
-  case_seller: string;
-  case_style: string;
+  [key: string]: unknown;
 }
 
 interface SearchDoc extends CatalogSearchRow {
@@ -35,18 +25,10 @@ interface FuseSearchResult {
 // ---------------------------------------------------------------------------
 
 export function rowSearchText(row: CatalogSearchRow): string {
-  return [
-    row.display_name,
-    row.brand,
-    row.name,
-    row.kind,
-    row.source_sheet,
-    row.status,
-    row.gpu_chipset,
-    row.gpu_model,
-    row.case_seller,
-    row.case_style
-  ].join(" ");
+  return Object.values(row)
+    .filter(v => typeof v === "string" || typeof v === "number")
+    .map(String)
+    .join(" ");
 }
 
 function normalizeSearchText(text: string): string {
@@ -74,20 +56,13 @@ export function fuseSearchRows(
     compact: normalizeSearchText(rowSearchText(row))
   }));
 
+  // Use all available keys from the first row (minus id and compact)
+  const searchKeys = docs.length > 0
+    ? Object.keys(docs[0]).filter(k => k !== "id" && k !== "compact")
+    : [];
+
   const fuse = new Fuse(docs, {
-    keys: [
-      { name: "display_name", weight: 2 },
-      { name: "brand", weight: 1.5 },
-      { name: "name", weight: 1.5 },
-      { name: "compact", weight: 1.8 },
-      { name: "kind", weight: 1 },
-      { name: "source_sheet", weight: 0.5 },
-      { name: "status", weight: 0.5 },
-      { name: "gpu_chipset", weight: 1 },
-      { name: "gpu_model", weight: 1 },
-      { name: "case_seller", weight: 1 },
-      { name: "case_style", weight: 1 }
-    ],
+    keys: searchKeys,
     threshold: 0.4,
     distance: 100,
     includeScore: true

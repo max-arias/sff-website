@@ -58,7 +58,7 @@ export function checkCaseGpuCompatibility(
     pcieSlots: null
   };
 
-  if (casePart.flags.includes("possibly-no-discrete-gpu-support")) {
+  if (casePart.dimensions.gpuLengthMm === null && casePart.dimensions.pcieSlots === null) {
     addIssue(
       issues,
       "possibly-no-discrete-gpu-support",
@@ -67,11 +67,11 @@ export function checkCaseGpuCompatibility(
     );
   }
 
-  if (casePart.flags.includes("low-profile-only") && !gpuPart.lowProfile) {
+  if (!gpuPart.lowProfile && (casePart.dimensions.lpPcieSlots ?? 0) > 0 && (casePart.dimensions.pcieSlots ?? 0) === 0) {
     addIssue(issues, "low-profile-only", "error", "This case appears to support low-profile GPUs only.");
   }
 
-  if (casePart.flags.includes("sandwich-layout")) {
+  if (casePart.style.toLowerCase() === "sandwich") {
     addIssue(
       issues,
       "sandwich-layout-mode",
@@ -80,11 +80,11 @@ export function checkCaseGpuCompatibility(
     );
   }
 
-  if (casePart.flags.includes("requires-riser")) {
+  if (casePart.gpuRiser === "Y") {
     addIssue(issues, "requires-riser", "warning", "This case requires a GPU riser.");
   }
 
-  if (casePart.flags.includes("riser-optional")) {
+  if (casePart.gpuRiser === "Optional") {
     addIssue(issues, "riser-optional", "warning", "GPU riser support is optional or configuration-dependent.");
   }
 

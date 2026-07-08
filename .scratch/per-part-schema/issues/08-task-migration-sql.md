@@ -1,6 +1,15 @@
+Type: task
+Status: resolved
+
+## Answer
+
+The migration replaces all 3 existing migration files. Single file: `migrations/0001_initial.sql`.
+
+```sql
 -- ============================================================================
 -- SFF Builder v2 — Per-part-type schema
 -- Replaces the monolithic sff_parts table with 7 dedicated tables.
+-- Fresh start: drop all previous migrations before applying.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -323,3 +332,34 @@ insert or ignore into column_help (table_name, column_name, help_text) values
 ('cases', 'gpu_height_mm', 'Assume 20mm per PCIe slot by default unless mentioned otherwise'),
 ('cases', 'motherboard', 'mSTX = 147x140mm. mITX = 170x170mm. mDTX = 203x170mm. FlexATX = 229x191mm. DTX = 203x244mm. mATX = 244x244mm. ATX = 305x244mm. SSI-CEB = 305x267mm. SSI-EEB = 305x330mm'),
 ('cases', 'psu', 'Flex ATX = 81.5x40.5x150mm. TFX = 85x65x175mm. SFX = 125x63.5x100mm. SFX-L = 125x63.5x130mm. ATX = 150x86x140-200mm');
+```
+
+**Usage:** Replace all files in `migrations/` with this single file. Apply with `wrangler d1 execute <db> --file=migrations/0001_initial.sql`.
+
+**Column counts:**
+| Table | Columns |
+|-------|---------|
+| cases | 53 |
+| gpus | 24 |
+| cpu_coolers | 39 |
+| fans | 24 |
+| motherboards | 58 |
+| psus | 33 |
+| ram | 8 |
+| column_help | 3 |
+| **Total** | **242** |
+
+Blocked by: 05, 06, 07
+
+## Question
+
+Produce the full `migrations/0001_initial.sql` file that replaces all existing migrations.
+
+It must create:
+1. All 7 part tables (DDLs from tickets 06 and 07)
+2. The `column_help` table (schema from ticket 05)
+3. Seed data for `column_help` (the 5 rows of domain notes from ticket 05)
+
+The file should be a single SQL file ready for `wrangler d1 execute`. All existing migrations (`0001_initial.sql`, `0002_psu_tier_enrichment.sql`, `0003_release_year.sql`) are replaced by this single file.
+
+The migration should use `create table if not exists` for idempotency during development.
