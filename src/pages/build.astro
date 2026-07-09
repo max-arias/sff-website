@@ -389,7 +389,7 @@ if (totalPages <= 7) {
 
   <!-- Sticky filter bar (revealed on scroll past original) -->
   <div class="sticky-filter-bar hidden fixed top-14 left-0 right-0 z-40 bg-base-100 border-b border-base-300 shadow-sm transition-opacity duration-150" data-sticky-filters>
-    <div class="max-w-[80rem] mx-auto flex items-center gap-3 px-4 py-2">
+    <div class="max-w-[80rem] mx-auto flex items-center gap-3 px-4 py-2 overflow-x-auto">
       <div class="flex items-center gap-0 flex-shrink-0" role="tablist" aria-label="Part kinds">
         {view.kindTabs.map((tab) => (
           <a class:list={["tab font-mono text-xs font-semibold uppercase tracking-[0.06em] py-2", { "tab-active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
@@ -397,7 +397,7 @@ if (totalPages <= 7) {
           </a>
         ))}
       </div>
-      <form class="relative flex-1 min-w-[10rem] max-w-[20rem]" method="GET" action={view.searchAction} data-autosubmit-form>
+      <form class="relative flex-shrink-0 w-[14rem]" method="GET" action={view.searchAction} data-autosubmit-form>
         <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-[0.85rem] h-[0.85rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="6.5"></circle>
           <path d="M16 16l5 5"></path>
@@ -405,6 +405,47 @@ if (totalPages <= 7) {
         {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
         <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-xs w-full pl-7" data-autosubmit-input role="searchbox" aria-label="Search models" />
       </form>
+
+      {view.numericFilters.length > 0 && (
+        <form class="flex items-center gap-2 flex-shrink-0" method="GET" action={view.searchAction} data-numeric-filter-form>
+          {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+          {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
+          {view.numericFilters.map((filter) => (
+            <label class:list={["flex items-center gap-1.5 px-1.5 py-1 border rounded-btn transition", { "border-primary": filter.active, "border-base-300": !filter.active }]} data-numeric-filter>
+              <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap">{filter.label}</span>
+              <input
+                class="range range-xs range-primary w-12"
+                type="range"
+                min="0"
+                max={filter.max}
+                step={filter.step}
+                value={filter.value}
+                aria-label={`${filter.label} slider`}
+                data-numeric-filter-range
+              />
+              <span class="flex items-center gap-0.5">
+                <input
+                  type="number"
+                  name={filter.name}
+                  min="0"
+                  max={filter.max}
+                  step={filter.step}
+                  value={filter.active ? filter.value : ""}
+                  placeholder={`${filter.max}`}
+                  class="input input-bordered input-xs w-11 text-right font-mono text-[0.65rem]"
+                  aria-label={filter.label}
+                  data-numeric-filter-number
+                />
+                <span class="font-mono text-[0.6rem] text-base-content/40">{filter.unit}</span>
+              </span>
+            </label>
+          ))}
+        </form>
+      )}
+
+      {hasActiveNumericFilter && (
+        <a class="btn btn-link btn-xs font-mono font-semibold flex-shrink-0" href={view.clearFiltersUrl}>Clear</a>
+      )}
     </div>
   </div>
 
