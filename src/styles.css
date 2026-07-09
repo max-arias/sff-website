@@ -59,6 +59,11 @@
   .autocomplete-result:hover {
     background: var(--color-base-200);
   }
+  .autocomplete-result--selected {
+    background: var(--color-base-200);
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
 
   .build-page {
     min-height: 100vh;
@@ -77,5 +82,32 @@
   .build-page .info-trigger:focus-visible .info-popover,
   .build-page .info-trigger:focus-within .info-popover {
     display: block;
+  }
+}
+
+/* View Transitions (native API, Astro 7) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
+::view-transition-old(root) {
+  animation-name: vt-fade-out;
+}
+::view-transition-new(root) {
+  animation-name: vt-fade-in;
+}
+@keyframes vt-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0s;
   }
 }

@@ -1341,7 +1341,7 @@ function verdictCopy(verdict: DisplayVerdict) {
 
 function verdictTooltip(verdict: DisplayVerdict) {
   if (verdict === "pass") return "Dimensions fit within known tolerances.";
-  if (verdict === "conditional") return "May fit — check warnings for tight clearances or missing data.";
+  if (verdict === "conditional") return "This part may fit, but the data is incomplete. Check the notes for specific warnings about missing dimensions, tight clearances, or practical build risks.";
   if (verdict === "fail") return "Physical dimensions conflict.";
   return "No dimensional conflicts found.";
 }

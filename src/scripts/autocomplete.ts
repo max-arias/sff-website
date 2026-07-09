@@ -45,8 +45,12 @@ export function initAutocomplete() {
     let debounceTimer = 0;
     let activeRequest = 0;
     let suggestions: CatalogSuggestion[] = [];
+    let selectedIndex = -1;
 
-    const closePanel = () => panel.classList.add("hidden");
+    const closePanel = () => {
+      panel.classList.add("hidden");
+      selectedIndex = -1;
+    };
     const openPanel = () => panel.classList.remove("hidden");
     const setStatus = (message: string) => {
       status.textContent = message;
@@ -57,13 +61,31 @@ export function initAutocomplete() {
       window.location.href = toBuildUrl(suggestion, input.value.trim(), launchKind);
     };
 
+    const updateHighlight = () => {
+      const options = results.querySelectorAll<HTMLElement>("[role=option]");
+      options.forEach((opt, i) => {
+        const isSelected = i === selectedIndex;
+        opt.setAttribute("aria-selected", String(isSelected));
+        opt.classList.toggle("autocomplete-result--selected", isSelected);
+      });
+      if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+        input.setAttribute("aria-activedescendant", `autocomplete-option-${selectedIndex}`);
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    };
+
     const renderSuggestions = () => {
       results.replaceChildren();
-      suggestions.forEach((suggestion) => {
+      selectedIndex = -1;
+      input.removeAttribute("aria-activedescendant");
+      suggestions.forEach((suggestion, index) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "autocomplete-result";
         button.setAttribute("role", "option");
+        button.id = `autocomplete-option-${index}`;
+        button.setAttribute("aria-selected", "false");
 
         const title = document.createElement("strong");
         title.className = "text-sm font-semibold text-base-content";
@@ -132,9 +154,28 @@ export function initAutocomplete() {
     });
 
     input.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      navigate(suggestions[0]);
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (suggestions.length === 0) return;
+        openPanel();
+        selectedIndex = selectedIndex < suggestions.length - 1 ? selectedIndex + 1 : 0;
+        updateHighlight();
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (suggestions.length === 0) return;
+        openPanel();
+        selectedIndex = selectedIndex > 0 ? selectedIndex - 1 : suggestions.length - 1;
+        updateHighlight();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const pick = selectedIndex >= 0 ? suggestions[selectedIndex] : suggestions[0];
+        navigate(pick);
+        return;
+      }
     });
 
     root.addEventListener("submit", (event) => {
