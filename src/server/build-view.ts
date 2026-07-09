@@ -596,7 +596,7 @@ function numericFilters(
     const maxGpuThick = maxDimension(parts.cases.map((p) => p.dimensions.gpuThicknessMm));
     const maxPcieSlots = maxDimension(parts.cases.map((p) => p.dimensions.pcieSlots));
     return [
-      makeNumericFilter("case-max-volume-l", "Max volume", "L", maxVolume, 0.5, state.caseMaxVolumeL),
+      makeNumericFilter("case-max-volume-l", "Max volume", "L", maxVolume, 1, state.caseMaxVolumeL),
       makeNumericFilter("case-max-gpu-length-mm", "Max GPU length", "mm", maxGpuLen, 1, state.caseMaxGpuLengthMm),
       makeNumericFilter("case-max-gpu-thickness-mm", "Max GPU thickness", "mm", maxGpuThick, 1, state.caseMaxGpuThicknessMm),
       makeNumericFilter("case-max-pcie-slots", "Max PCIe slots", "slots", maxPcieSlots, 1, state.caseMaxPcieSlots),
@@ -874,13 +874,7 @@ function buildFilterChips(state: BuildQueryState): BuildView["activeFilterChips"
   return chips;
 }
 
-function buildTableNotice(ctx: EvalContext, state: BuildQueryState): string {
-  if (state.kind === "gpu" && !ctx.activeCase) {
-    return "Select a case to expose hard fitment limits and cautionary rows.";
-  }
-  if (state.kind === "case" && !hasActiveCaseConstraint(ctx)) {
-    return "Select another part to evaluate case-side fitment evidence.";
-  }
+function buildTableNotice(_ctx: EvalContext, _state: BuildQueryState): string {
   return "";
 }
 
@@ -892,7 +886,8 @@ function slotVerdict(
   if (part) {
     const summary = evaluateCandidateFitment(ctx, part);
     if (summary.verdict !== "unscored") return summary.verdict;
-    if (kind === "case") return "pass";
+    const totalSelected = Object.values(ctx.state.selectedIds).filter(Boolean).length;
+    if (kind === "case" && totalSelected > 1) return "pass";
   }
   return "unscored";
 }

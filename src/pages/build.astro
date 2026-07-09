@@ -9,6 +9,13 @@ const numericFilterHiddenInputs = view.hiddenInputs.filter((input) => !numericFi
 const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active);
 const hasAnySelection = view.slots.some((s) => s.id);
 
+const hasCase = view.slots.find((s) => s.kind === "case")?.id;
+const hasGpu = view.slots.find((s) => s.kind === "gpu")?.id;
+const sidebarHint = !hasCase && !hasGpu ? "Add more parts from the table"
+  : hasCase && !hasGpu ? "Select a GPU to check case fitment"
+  : !hasCase && hasGpu ? "Select a case to check GPU fitment"
+  : "Add more parts from the table";
+
 type PageItem =
   | { type: "page"; page: number; url: string }
   | { type: "ellipsis" };
@@ -63,7 +70,7 @@ if (totalPages <= 7) {
           </div>
 
           <!-- Filter bar -->
-          <div class="flex items-center gap-4 px-6 py-3 border-b border-base-300 bg-base-200/50 flex-wrap">
+          <div class="flex items-center gap-4 px-6 py-3 border-b border-base-300 bg-base-200/50 flex-wrap" data-filter-sentinel>
             <form class="relative flex-1 min-w-[12rem] max-w-[24rem]" method="GET" action={view.searchAction} data-autosubmit-form>
               <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-3 top-1/2 -translate-y-1/2 w-[0.9rem] h-[0.9rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="11" cy="11" r="6.5"></circle>
@@ -114,22 +121,6 @@ if (totalPages <= 7) {
               <a class="btn btn-link btn-xs font-mono font-semibold" href={view.clearFiltersUrl}>Clear filters</a>
             )}
           </div>
-
-          <!-- Filter chips -->
-          {view.activeFilterChips && view.activeFilterChips.length > 0 && (
-            <div class="flex flex-wrap items-center gap-2 px-6 py-2.5">
-              {view.activeFilterChips.map((chip) => (
-                <a href={chip.href} class:list={["badge gap-1.5 py-3", { "badge-ghost": chip.tone === "neutral" }]}>
-                  {chip.label}
-                  {chip.tone !== "neutral" && (
-                    <svg viewBox="0 0 24 24" aria-hidden="true" class="w-3 h-3">
-                      <path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"></path>
-                    </svg>
-                  )}
-                </a>
-              ))}
-            </div>
-          )}
 
           {view.tableNotice && <div class="mx-6 my-3 px-4 py-3 border border-base-300 rounded-btn bg-base-200 text-sm text-base-content/60">{view.tableNotice}</div>}
 
@@ -371,7 +362,7 @@ if (totalPages <= 7) {
                   </div>
                 ))}
                 {view.slots.some((s) => !s.id) && (
-                  <p class="text-xs text-base-content/40 pt-1 pb-1 text-center">Add more parts from the table</p>
+                  <p class="text-xs text-base-content/40 pt-1 pb-1 text-center">{sidebarHint}</p>
                 )}
               </>
             )}
@@ -395,6 +386,41 @@ if (totalPages <= 7) {
       </div>
     </div>
   </div>
+
+  <!-- Sticky filter bar (revealed on scroll past original) -->
+  <div class="sticky-filter-bar hidden fixed top-14 left-0 right-0 z-40 bg-base-100 border-b border-base-300 shadow-sm transition-opacity duration-150" data-sticky-filters>
+    <div class="max-w-[80rem] mx-auto flex items-center gap-3 px-4 py-2">
+      <div class="flex items-center gap-0 flex-shrink-0" role="tablist" aria-label="Part kinds">
+        {view.kindTabs.map((tab) => (
+          <a class:list={["tab font-mono text-xs font-semibold uppercase tracking-[0.06em] py-2", { "tab-active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
+            {tab.kind}
+          </a>
+        ))}
+      </div>
+      <form class="relative flex-1 min-w-[10rem] max-w-[20rem]" method="GET" action={view.searchAction} data-autosubmit-form>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-[0.85rem] h-[0.85rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="6.5"></circle>
+          <path d="M16 16l5 5"></path>
+        </svg>
+        {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+        <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-xs w-full pl-7" data-autosubmit-input role="searchbox" aria-label="Search models" />
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const sentinel = document.querySelector("[data-filter-sentinel]");
+    const stickyBar = document.querySelector("[data-sticky-filters]");
+    if (sentinel && stickyBar) {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          stickyBar.classList.toggle("hidden", entry.isIntersecting);
+        },
+        { rootMargin: "-64px 0px 0px 0px" },
+      );
+      observer.observe(sentinel);
+    }
+  </script>
 
   <script src="../scripts/enhance-on-idle.ts"></script>
 </BaseLayout>
