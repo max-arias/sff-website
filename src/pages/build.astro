@@ -389,8 +389,8 @@ if (totalPages <= 7) {
 
   <!-- Sticky filter bar (revealed on scroll past original) -->
   <div class="sticky-filter-bar hidden fixed top-14 left-0 right-0 z-40 bg-base-100 border-b border-base-300 shadow-sm transition-opacity duration-150" data-sticky-filters>
-    <div class="max-w-[80rem] mx-auto flex items-center gap-3 px-4 py-2 overflow-x-auto">
-      <div class="flex items-center gap-0 flex-shrink-0" role="tablist" aria-label="Part kinds">
+    <div class="max-w-[80rem] mx-auto flex items-center gap-3 px-4 py-1.5 flex-wrap">
+      <div class="flex items-center gap-1 flex-shrink-0" role="tablist" aria-label="Part kinds">
         {view.kindTabs.map((tab) => (
           <a class:list={["tab font-mono text-xs font-semibold uppercase tracking-[0.06em] py-2", { "tab-active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
             {tab.kind}
