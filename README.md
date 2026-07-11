@@ -28,6 +28,12 @@ The homepage currently exposes one technical entry surface:
 
 All three autocomplete inputs query D1 after 3 typed characters, show a loading state while the request is in flight, and return richer labels so builders can distinguish actual SKUs instead of vague display names alone.
 
+## Build Table Filters
+
+The `/build` table is URL-backed. Search, active kind, sort, pagination, selected parts, numeric filters, and sparse-row visibility are encoded in query params so the view can be shared and replayed.
+
+Rows without fitment-relevant data are hidden by default to keep the table focused on useful evidence. The **Show sparse rows** toggle adds `show-sparse=1` to the URL and includes rows whose visible metrics are otherwise blank, such as catalog entries with only a name, brand, or incidental notes.
+
 ## Cloudflare D1
 
 Create the database and update `wrangler.jsonc` with the returned `database_id`:
@@ -54,6 +60,6 @@ npm run cf:dev
 
 The importer stores the SFF Master List in one wide `sff_parts` table with a `kind` column, normalized fields for common filtering, and raw/link JSON for source provenance. The current case/GPU compatibility views are derived from the same table.
 
-Rows with unknown dimensions are imported, flagged, and shown with warnings instead of being discarded.
+Rows with incomplete dimensions are imported and preserved. Rows that have enough fitment context to evaluate should surface uncertainty as warnings; rows with no fitment-relevant fields are hidden from `/build` by default but can be restored with `show-sparse=1`.
 
 For the v1 data direction, see [DATA_V1.md](./DATA_V1.md).

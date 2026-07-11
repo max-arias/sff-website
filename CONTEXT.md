@@ -232,6 +232,10 @@ _Avoid_: One universal filter model, irrelevant shared controls
 A filter that remains visible across multiple table kinds because it applies broadly, such as search or sort.
 _Avoid_: Kind-only control masquerading as universal
 
+**Sparse Row Visibility**:
+The URL-backed control that determines whether the table includes catalog rows with no fitment-relevant metric data. Sparse rows are hidden by default to keep the fitment table evidence-focused, and `show-sparse=1` restores them for full catalog auditing.
+_Avoid_: Permanently discarding sparse imports, confusing sparse rows with `conditional` fitment uncertainty
+
 **Always-Visible Verdicts**:
 The rule that the table keeps `pass`, `conditional`, and `fail` rows visible together, relying on sort and visual state rather than a separate visibility toggle.
 _Avoid_: Hidden verdict mode, filtered-away fitment state
@@ -305,6 +309,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - Each `Table Kind Filter` should also use a **Kind-Specific Filter Set**
 - Irrelevant kind-only filters should be hidden, while **Shared Filter Controls** remain visible
 - In v1, `search` and `sort` are **Shared Filter Controls**
+- **Sparse Row Visibility** defaults to hidden and is replayed with the `show-sparse=1` URL parameter when enabled
 - Table verdict states follow **Always-Visible Verdicts**
 - `search` follows **Kind-Scoped Search** inside the active table kind
 - Table paging follows **Replayable Pagination**

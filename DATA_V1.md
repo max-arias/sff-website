@@ -76,6 +76,8 @@ Initial relationship engines:
 
 Rules should return `pass`, `fail`, or `conditional`. Missing or ambiguous source data should produce visible warnings rather than silent filtering.
 
+Rows with no fitment-relevant metric data are still imported so the source catalog remains auditable. The `/build` UI hides those sparse rows by default and exposes them with the URL-backed `show-sparse=1` toggle; this keeps empty rows from crowding the fitment table without treating missing data as a hard incompatibility.
+
 ## V1 Build Workbench
 
 The user experience should support locked parts:

@@ -3,7 +3,7 @@ import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
 import {
   fuseSearchRows,
   rowSearchText,
-  type CatalogSearchRow
+  type CatalogSearchRow,
 } from "./catalog-search";
 
 interface D1Result<T> {
@@ -49,13 +49,13 @@ export interface CatalogSearchSuggestion {
 // ---------------------------------------------------------------------------
 
 const TABLE_MAP: Record<string, string> = {
-  "case": "cases",
-  "gpu": "gpus",
+  case: "cases",
+  gpu: "gpus",
   "cpu-cooler": "cpu_coolers",
-  "fan": "fans",
-  "motherboard": "motherboards",
-  "psu": "psus",
-  "ram": "ram"
+  fan: "fans",
+  motherboard: "motherboards",
+  psu: "psus",
+  ram: "ram",
 };
 
 function kindToTable(kind: string): string | null {
@@ -73,7 +73,9 @@ function getDb() {
 function requireDb() {
   const db = getDb();
   if (!db) {
-    throw new Error("D1 binding is unavailable. Configure the DB binding and run the local D1 database.");
+    throw new Error(
+      "D1 binding is unavailable. Configure the DB binding and run the local D1 database.",
+    );
   }
   return db;
 }
@@ -91,24 +93,61 @@ function rowToCase(row: Record<string, unknown>): CasePart {
     seller: String(row.seller ?? ""),
     name: String(row.name ?? ""),
     style: String(row.style ?? ""),
+    sidePanel: String(row.side_panel ?? ""),
+    caseMaterial: String(row.case_material ?? ""),
     status: String(row.status ?? ""),
     gpuRiser: String(row.gpu_riser ?? ""),
     psu: String(row.psu ?? ""),
+    motherboard: String(row.motherboard ?? ""),
+    radiatorSupportRaw: String(row.radiator_support_raw ?? ""),
+    sffNetLink: String(row.sff_net_link ?? ""),
+    lastUpdate: String(row.last_update ?? ""),
     dimensions: {
       lengthMm: nullableNumber(row.length_mm),
       widthMm: nullableNumber(row.width_mm),
       heightMm: nullableNumber(row.height_mm),
       volumeL: nullableNumber(row.volume_l),
+      footprintCm2: nullableNumber(row.footprint_cm2),
+      weightKg: nullableNumber(row.weight_kg),
       cpuCoolerHeightMm: nullableNumber(row.cpu_cooler_height_mm),
       gpuLengthMm: nullableNumber(row.gpu_length_mm),
       gpuWidthMm: nullableNumber(row.gpu_width_mm),
       gpuThicknessMm: nullableNumber(row.gpu_height_mm),
       pcieSlots: nullableNumber(row.pcie_slots),
-      lpPcieSlots: nullableNumber(row.lp_pcie_slots)
+      lpPcieSlots: nullableNumber(row.lp_pcie_slots),
     },
+    counts: {
+      drive25Max: nullableNumber(row.drive_2_5_max),
+      drive35Max: nullableNumber(row.drive_3_5_max),
+      drive525Max: nullableNumber(row.drive_5_25_max),
+      fan40mm: nullableNumber(row.fan_40mm_count),
+      fan60mm: nullableNumber(row.fan_60mm_count),
+      fan80mm: nullableNumber(row.fan_80mm_count),
+      fan92mm: nullableNumber(row.fan_92mm_count),
+      fan120mm: nullableNumber(row.fan_120mm_count),
+      fan140mm: nullableNumber(row.fan_140mm_count),
+      fan180mm: nullableNumber(row.fan_180mm_count),
+      fan200mm: nullableNumber(row.fan_200mm_count),
+      usbA20: nullableNumber(row.usb_a_2_0_count),
+      usbA32: nullableNumber(row.usb_a_3_2_count),
+      usbC: nullableNumber(row.usb_c_count),
+    },
+    radiatorFlags: {
+      has120mm: booleanish(row.radiator_120mm),
+      has140mm: booleanish(row.radiator_140mm),
+      has200mm: booleanish(row.radiator_200mm),
+      has240mm: booleanish(row.radiator_240mm),
+      has280mm: booleanish(row.radiator_280mm),
+      has360mm: booleanish(row.radiator_360mm),
+      has420mm: booleanish(row.radiator_420mm),
+      hasTopHat: booleanish(row.radiator_top_hat),
+    },
+    hasJack35mm: booleanish(row.jack_3_5mm),
+    priceCny: nullableNumber(row.price_cny),
+    priceUsd: nullableNumber(row.price_usd),
     releaseYear: null,
     flags: [],
-    raw: {}
+    raw: {},
   };
 }
 
@@ -124,29 +163,57 @@ function rowToGpu(row: Record<string, unknown>): GpuPart {
     name: String(row.name ?? ""),
     lowProfile: booleanish(row.low_profile),
     watercooled: booleanish(row.watercooled),
+    blower: booleanish(row.blower),
     pciePins: String(row.pcie_pins ?? ""),
     tdpW: nullableNumber(row.tdp_w),
+    boostClockMhz: nullableNumber(row.boost_clock_mhz),
+    memorySpeedGbps: nullableNumber(row.memory_speed_gbps),
+    fanCount: nullableNumber(row.fan_count),
+    displayportCount: nullableNumber(row.displayport_count),
+    hdmiCount: nullableNumber(row.hdmi_count),
+    usbCCount: nullableNumber(row.usb_c_count),
+    dviD: booleanish(row.dvi_d),
+    remarks: String(row.remarks ?? ""),
     dimensions: {
       lengthMm: nullableNumber(row.length_mm),
       widthMm: nullableNumber(row.width_mm),
       thicknessMm: nullableNumber(row.thickness_mm),
-      pcieSlots: nullableNumber(row.pcie_bracket)
+      pcieSlots: nullableNumber(row.pcie_bracket),
     },
     releaseYear: null,
     flags: [],
-    raw: {}
+    raw: {},
   };
 }
 
-function rowToGenericPart(row: Record<string, unknown>, kind: PartKind): GenericPart {
+function rowToGenericPart(
+  row: Record<string, unknown>,
+  kind: PartKind,
+): GenericPart {
   const specs: Record<string, string> = {};
   const dimensions: Record<string, number> = {};
 
   // Copy all non-null values to specs/dimensions for generic access
   for (const [key, value] of Object.entries(row)) {
-    if (value === null || value === undefined || key === "id" || key === "created_at" || key === "updated_at" || key === "status") continue;
+    if (
+      value === null ||
+      value === undefined ||
+      key === "id" ||
+      key === "created_at" ||
+      key === "updated_at" ||
+      key === "status"
+    )
+      continue;
     if (typeof value === "number" && Number.isFinite(value)) {
       dimensions[key] = value;
+      // Also store under a stripped key so lookups without _mm/_w/_g/_count etc. suffixes work
+      const stripped = key.replace(
+        /_(mm|w|g|count|rpm|cfm|dba|gbps|mhz|mbps|v|a|kg|l|cm2)$/,
+        "",
+      );
+      if (stripped !== key) {
+        dimensions[stripped] = value;
+      }
     } else if (typeof value === "string" && value !== "") {
       specs[key] = value;
     } else if (typeof value === "boolean" || value === 0 || value === 1) {
@@ -161,7 +228,11 @@ function rowToGenericPart(row: Record<string, unknown>, kind: PartKind): Generic
     rowNumber: Number(row.source_row_number ?? 0),
     brand: String(row.brand ?? ""),
     name: String(row.name ?? row.model ?? ""),
-    displayName: (String(row.brand ?? "") + " " + String(row.name ?? row.model ?? "")).trim(),
+    displayName: (
+      String(row.brand ?? "") +
+      " " +
+      String(row.name ?? row.model ?? "")
+    ).trim(),
     status: String(row.status ?? ""),
     sellerUrl: "",
     productUrl: "",
@@ -170,7 +241,7 @@ function rowToGenericPart(row: Record<string, unknown>, kind: PartKind): Generic
     releaseYear: null,
     flags: [],
     raw: row as Record<string, string>,
-    links: {}
+    links: {},
   };
 }
 
@@ -178,27 +249,37 @@ function rowToGenericPart(row: Record<string, unknown>, kind: PartKind): Generic
 // Load parts (cases & GPUs for build view)
 // ---------------------------------------------------------------------------
 
-export async function loadParts(event: unknown): Promise<{ cases: CasePart[]; gpus: GpuPart[]; source: "d1" }> {
+export async function loadParts(
+  event: unknown,
+): Promise<{ cases: CasePart[]; gpus: GpuPart[]; source: "d1" }> {
   void event;
   const db = requireDb();
   const [caseRows, gpuRows] = await Promise.all([
-    db.prepare("select * from cases order by name").all<Record<string, unknown>>(),
-    db.prepare("select * from gpus order by name").all<Record<string, unknown>>()
+    db
+      .prepare("select * from cases order by name")
+      .all<Record<string, unknown>>(),
+    db
+      .prepare("select * from gpus order by name")
+      .all<Record<string, unknown>>(),
   ]);
 
   return {
     cases: (caseRows.results ?? []).map(rowToCase),
     gpus: (gpuRows.results ?? []).map(rowToGpu),
-    source: "d1"
+    source: "d1",
   };
 }
 
-export async function findCaseAndGpu(event: unknown, caseId: string, gpuId: string) {
+export async function findCaseAndGpu(
+  event: unknown,
+  caseId: string,
+  gpuId: string,
+) {
   const parts = await loadParts(event);
   return {
     casePart: parts.cases.find((part) => part.id === caseId) ?? null,
     gpuPart: parts.gpus.find((part) => part.id === gpuId) ?? null,
-    source: parts.source
+    source: parts.source,
   };
 }
 
@@ -206,55 +287,83 @@ export async function findCaseAndGpu(event: unknown, caseId: string, gpuId: stri
 // Search
 // ---------------------------------------------------------------------------
 
-export async function searchCatalog(event: unknown, rawOptions: Partial<CatalogSearchOptions>) {
+export async function searchCatalog(
+  event: unknown,
+  rawOptions: Partial<CatalogSearchOptions>,
+) {
   return searchCatalogRows(event, rawOptions);
 }
 
-async function searchCatalogRows(event: unknown, rawOptions: Partial<CatalogSearchOptions>) {
+async function searchCatalogRows(
+  event: unknown,
+  rawOptions: Partial<CatalogSearchOptions>,
+) {
   void event;
   const options = {
     query: rawOptions.query?.trim() ?? "",
     limit: Math.max(1, Math.min(5000, Math.floor(rawOptions.limit ?? 25))),
-    kind: rawOptions.kind && rawOptions.kind !== "all" ? rawOptions.kind : undefined,
-    sourceSheet: rawOptions.sourceSheet && rawOptions.sourceSheet !== "all" ? rawOptions.sourceSheet : undefined
+    kind:
+      rawOptions.kind && rawOptions.kind !== "all"
+        ? rawOptions.kind
+        : undefined,
+    sourceSheet:
+      rawOptions.sourceSheet && rawOptions.sourceSheet !== "all"
+        ? rawOptions.sourceSheet
+        : undefined,
   };
   const db = requireDb();
 
   if (!options.query) {
     return {
       source: "d1" as const,
-      suggestions: [] as CatalogSearchSuggestion[]
+      suggestions: [] as CatalogSearchSuggestion[],
     };
   }
 
   // Collect search rows from relevant tables
   const allRows: CatalogSearchRow[] = [];
-  const tablesToSearch = options.kind ? [TABLE_MAP[options.kind]].filter(Boolean) : Object.values(TABLE_MAP);
+  const tablesToSearch = options.kind
+    ? [TABLE_MAP[options.kind]].filter(Boolean)
+    : Object.values(TABLE_MAP);
 
   for (const table of tablesToSearch) {
     const cols = searchColumnsForTable(table);
-    const rows = await db.prepare(`select ${cols} from ${table}`).all<CatalogSearchRow>();
+    const rows = await db
+      .prepare(`select ${cols} from ${table}`)
+      .all<CatalogSearchRow>();
     allRows.push(...(rows.results ?? []));
   }
 
-  const suggestions = fuseSearchRows(allRows, options.query, options.limit).map(rowSuggestion);
+  const suggestions = fuseSearchRows(allRows, options.query, options.limit).map(
+    rowSuggestion,
+  );
   return { source: "d1" as const, suggestions };
 }
 
 function searchColumnsForTable(table: string): string {
   switch (table) {
-    case "cases": return "id, 'case' as kind, seller, name, style, status";
-    case "gpus": return "id, 'gpu' as kind, brand, name, chipset, model, status";
-    case "cpu_coolers": return "id, 'cpu-cooler' as kind, brand, name, type, status";
-    case "fans": return "id, 'fan' as kind, brand, model, status";
-    case "motherboards": return "id, 'motherboard' as kind, brand, name, cpu, chipset, socket, status";
-    case "psus": return "id, 'psu' as kind, brand, name, form_factor, wattage, status";
-    case "ram": return "id, 'ram' as kind, brand, model, memory_type, status";
-    default: return "id";
+    case "cases":
+      return "id, 'case' as kind, seller, name, style, status";
+    case "gpus":
+      return "id, 'gpu' as kind, brand, name, chipset, model, status";
+    case "cpu_coolers":
+      return "id, 'cpu-cooler' as kind, brand, name, type, status";
+    case "fans":
+      return "id, 'fan' as kind, brand, model, status";
+    case "motherboards":
+      return "id, 'motherboard' as kind, brand, name, cpu, chipset, socket, status";
+    case "psus":
+      return "id, 'psu' as kind, brand, name, form_factor, wattage, status";
+    case "ram":
+      return "id, 'ram' as kind, brand, model, memory_type, status";
+    default:
+      return "id";
   }
 }
 
-function rowSuggestion(row: CatalogSearchRow & { score: number }): CatalogSearchSuggestion {
+function rowSuggestion(
+  row: CatalogSearchRow & { score: number },
+): CatalogSearchSuggestion {
   const brand = String(row.brand ?? row.seller ?? "");
   const name = String(row.name ?? row.model ?? "");
   return {
@@ -264,7 +373,7 @@ function rowSuggestion(row: CatalogSearchRow & { score: number }): CatalogSearch
     sourceSheet: String(row.source_sheet ?? ""),
     rowNumber: Number(row.source_row_number ?? 0),
     score: row.score,
-    match: rowSearchText(row)
+    match: rowSearchText(row),
   };
 }
 
@@ -278,7 +387,7 @@ export async function loadCatalogPartsByIds(event: unknown, ids: string[]) {
   if (!uniqueIds.length) {
     return {
       source: "d1" as const,
-      parts: [] as GenericPart[]
+      parts: [] as GenericPart[],
     };
   }
 
@@ -286,23 +395,33 @@ export async function loadCatalogPartsByIds(event: unknown, ids: string[]) {
   const allParts: GenericPart[] = [];
 
   // Try each table — slugs are globally unique
-  for (const table of ["cases", "gpus", "cpu_coolers", "fans", "motherboards", "psus", "ram"]) {
+  for (const table of [
+    "cases",
+    "gpus",
+    "cpu_coolers",
+    "fans",
+    "motherboards",
+    "psus",
+    "ram",
+  ]) {
     const placeholders = uniqueIds.map(() => "?").join(", ");
     const rows = await db
       .prepare(`select * from ${table} where id in (${placeholders})`)
       .bind(...uniqueIds)
       .all<Record<string, unknown>>();
 
-    for (const row of (rows.results ?? [])) {
+    for (const row of rows.results ?? []) {
       allParts.push(rowToGenericPart(row, tableToKind(table)));
     }
   }
 
   // Preserve input order
-  const partsById = new Map(allParts.map(p => [p.id, p]));
+  const partsById = new Map(allParts.map((p) => [p.id, p]));
   return {
     source: "d1" as const,
-    parts: uniqueIds.map(id => partsById.get(id)).filter((p): p is GenericPart => Boolean(p))
+    parts: uniqueIds
+      .map((id) => partsById.get(id))
+      .filter((p): p is GenericPart => Boolean(p)),
   };
 }
 
@@ -311,7 +430,10 @@ function tableToKind(table: string): PartKind {
   return (kind as PartKind) ?? "unknown";
 }
 
-export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQueryOptions> = {}): Promise<{
+export async function loadCatalog(
+  event: unknown,
+  rawOptions: Partial<CatalogQueryOptions> = {},
+): Promise<{
   parts: GenericPart[];
   source: "d1";
   summary: {
@@ -340,14 +462,20 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
       parts,
       source: "d1",
       summary: { total: 0, filteredTotal: 0, byKind: {}, bySourceSheet: {} },
-      pagination: { page: 1, pageSize: options.pageSize, pageCount: 0 }
+      pagination: { page: 1, pageSize: options.pageSize, pageCount: 0 },
     };
   }
 
   if (options.search) {
-    const searchResults = await searchCatalogRows(event, { query: options.search, kind: options.kind, limit: options.pageSize });
+    const searchResults = await searchCatalogRows(event, {
+      query: options.search,
+      kind: options.kind,
+      limit: options.pageSize,
+    });
     filteredTotal = searchResults.suggestions.length;
-    const pageIds = searchResults.suggestions.slice(offset, offset + options.pageSize).map(s => s.id);
+    const pageIds = searchResults.suggestions
+      .slice(offset, offset + options.pageSize)
+      .map((s) => s.id);
     parts = (await loadCatalogPartsByIds(event, pageIds)).parts;
   } else {
     const { where, values } = buildCatalogWhere(options, table);
@@ -356,7 +484,7 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
       .prepare(`select * from ${table} ${where} ${orderBy} limit ? offset ?`)
       .bind(...values, options.pageSize, offset)
       .all<Record<string, unknown>>();
-    parts = (rows.results ?? []).map(row => rowToGenericPart(row, kind));
+    parts = (rows.results ?? []).map((row) => rowToGenericPart(row, kind));
     const filteredRows = await db
       .prepare(`select count(*) as count from ${table} ${where}`)
       .bind(...values)
@@ -367,7 +495,9 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
   // Summary: aggregate across all tables
   const byKind: Record<string, number> = {};
   for (const [k, tbl] of Object.entries(TABLE_MAP)) {
-    const r = await db.prepare(`select count(*) as count from ${tbl}`).all<{ count: number }>();
+    const r = await db
+      .prepare(`select count(*) as count from ${tbl}`)
+      .all<{ count: number }>();
     byKind[k] = Number(r.results?.[0]?.count ?? 0);
   }
   const total = Object.values(byKind).reduce((a, b) => a + b, 0);
@@ -379,8 +509,8 @@ export async function loadCatalog(event: unknown, rawOptions: Partial<CatalogQue
     pagination: {
       page: options.page,
       pageSize: options.pageSize,
-      pageCount: Math.max(1, Math.ceil(filteredTotal / options.pageSize))
-    }
+      pageCount: Math.max(1, Math.ceil(filteredTotal / options.pageSize)),
+    },
   };
 }
 
@@ -394,11 +524,16 @@ function buildCatalogWhere(options: CatalogQueryOptions, _table: string) {
 
   if (options.search) {
     const like = `%${options.search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-    clauses.push("(name like ? escape '\\' or brand like ? escape '\\' or status like ? escape '\\')");
+    clauses.push(
+      "(name like ? escape '\\' or brand like ? escape '\\' or status like ? escape '\\')",
+    );
     values.push(like, like, like);
   }
 
-  return { where: clauses.length ? `where ${clauses.join(" and ")}` : "", values };
+  return {
+    where: clauses.length ? `where ${clauses.join(" and ")}` : "",
+    values,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -415,12 +550,17 @@ function booleanish(value: unknown) {
   return value === true || value === 1 || value === "1";
 }
 
-function clampCatalogOptions(options: Partial<CatalogQueryOptions> = {}): CatalogQueryOptions {
+function clampCatalogOptions(
+  options: Partial<CatalogQueryOptions> = {},
+): CatalogQueryOptions {
   return {
     page: Math.max(1, Math.floor(options.page ?? 1)),
     pageSize: Math.max(10, Math.min(5000, Math.floor(options.pageSize ?? 50))),
     kind: options.kind && options.kind !== "all" ? options.kind : undefined,
-    sourceSheet: options.sourceSheet && options.sourceSheet !== "all" ? options.sourceSheet : undefined,
-    search: options.search?.trim() || undefined
+    sourceSheet:
+      options.sourceSheet && options.sourceSheet !== "all"
+        ? options.sourceSheet
+        : undefined,
+    search: options.search?.trim() || undefined,
   };
 }

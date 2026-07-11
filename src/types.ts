@@ -81,14 +81,22 @@ export interface CasePart {
   seller: string;
   name: string;
   style: string;
+  sidePanel: string;
+  caseMaterial: string;
   status: string;
   gpuRiser: string;
   psu: string;
+  motherboard: string;
+  radiatorSupportRaw: string;
+  sffNetLink: string;
+  lastUpdate: string;
   dimensions: {
     lengthMm: number | null;
     widthMm: number | null;
     heightMm: number | null;
     volumeL: number | null;
+    footprintCm2: number | null;
+    weightKg: number | null;
     cpuCoolerHeightMm: number | null;
     gpuLengthMm: number | null;
     gpuWidthMm: number | null;
@@ -96,6 +104,35 @@ export interface CasePart {
     pcieSlots: number | null;
     lpPcieSlots: number | null;
   };
+  counts: {
+    drive25Max: number | null;
+    drive35Max: number | null;
+    drive525Max: number | null;
+    fan40mm: number | null;
+    fan60mm: number | null;
+    fan80mm: number | null;
+    fan92mm: number | null;
+    fan120mm: number | null;
+    fan140mm: number | null;
+    fan180mm: number | null;
+    fan200mm: number | null;
+    usbA20: number | null;
+    usbA32: number | null;
+    usbC: number | null;
+  };
+  radiatorFlags: {
+    has120mm: boolean;
+    has140mm: boolean;
+    has200mm: boolean;
+    has240mm: boolean;
+    has280mm: boolean;
+    has360mm: boolean;
+    has420mm: boolean;
+    hasTopHat: boolean;
+  };
+  hasJack35mm: boolean;
+  priceCny: number | null;
+  priceUsd: number | null;
   releaseYear: number | null;
   flags: string[];
   raw: Record<string, string>;
@@ -112,8 +149,17 @@ export interface GpuPart {
   name: string;
   lowProfile: boolean;
   watercooled: boolean;
+  blower: boolean;
   pciePins: string;
   tdpW: number | null;
+  boostClockMhz: number | null;
+  memorySpeedGbps: number | null;
+  fanCount: number | null;
+  displayportCount: number | null;
+  hdmiCount: number | null;
+  usbCCount: number | null;
+  dviD: boolean;
+  remarks: string;
   dimensions: {
     lengthMm: number | null;
     widthMm: number | null;

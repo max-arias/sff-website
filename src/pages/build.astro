@@ -6,8 +6,12 @@ import { buildUrl } from "../lib/build-state";
 const view = await getBuildView(Astro, Astro.url);
 const numericFilterNames = new Set(view.numericFilters.map((filter) => filter.name));
 const numericFilterHiddenInputs = view.hiddenInputs.filter((input) => !numericFilterNames.has(input.name as never));
+const sparseToggleHiddenInputs = view.hiddenInputs.filter((input) => input.name !== "show-sparse");
+const sparseRowsTooltip = "Rows without fitment-relevant data are hidden by default. Turn this on to include them.";
 const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active);
 const hasAnySelection = view.slots.some((s) => s.id);
+const actionHeader = view.tableHeaders.find((header) => header.label === "Action");
+const dataTableHeaders = view.tableHeaders.filter((header) => header.label !== "Action");
 
 const hasCase = view.slots.find((s) => s.kind === "case")?.id;
 const hasGpu = view.slots.find((s) => s.kind === "gpu")?.id;
@@ -58,67 +62,123 @@ if (totalPages <= 7) {
 
       <!-- ===== MAIN PANEL (drawer content) ===== -->
       <div class="drawer-content">
-        <section class="main-panel">
+        <section class="main-panel flex flex-col min-h-0">
 
           <!-- Kind tabs -->
-          <div class="tabs tabs-bordered px-6 pt-2" role="tablist" aria-label="Part kinds">
-            {view.kindTabs.map((tab) => (
-              <a class:list={["tab font-mono text-xs font-semibold uppercase tracking-[0.06em]", { "tab-active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
-                {tab.kind}
-              </a>
-            ))}
+          <div class="overflow-x-auto px-6 pt-2">
+            <div class="tabs tabs-lift min-w-max" role="tablist" aria-label="Part kinds">
+              {view.kindTabs.map((tab) => (
+                <a
+                  class:list={[
+                    "tab font-mono text-xs font-semibold uppercase tracking-[0.06em]",
+                    { "tab-active": tab.active },
+                  ]}
+                  href={tab.href}
+                  role="tab"
+                  aria-selected={tab.active ? "true" : "false"}
+                >
+                  {tab.kind}
+                </a>
+              ))}
+            </div>
           </div>
 
-          <!-- Filter bar -->
-          <div class="flex items-center gap-4 px-6 py-3 border-b border-base-300 bg-base-200/50 flex-wrap" data-filter-sentinel>
-            <form class="relative flex-1 min-w-[12rem] max-w-[24rem]" method="GET" action={view.searchAction} data-autosubmit-form>
-              <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-3 top-1/2 -translate-y-1/2 w-[0.9rem] h-[0.9rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
+          <!-- Compact filter toolbar -->
+          <div class="flex items-center gap-3 px-6 py-2.5 border-b border-base-300 bg-base-200/60 flex-wrap" data-filter-sentinel>
+            <!-- Search -->
+            <form class="relative flex-shrink-0 w-[14rem]" method="GET" action={view.searchAction} data-autosubmit-form>
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-[0.85rem] h-[0.85rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="11" cy="11" r="6.5"></circle>
                 <path d="M16 16l5 5"></path>
               </svg>
               {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-              <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-sm w-full pl-8" data-autosubmit-input role="searchbox" aria-label="Search models" />
+              <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-xs w-full pl-7 font-mono text-xs" data-autosubmit-input role="searchbox" aria-label="Search models" />
             </form>
 
-            {view.numericFilters.length > 0 && (
-              <form class="flex items-center gap-3 flex-wrap" method="GET" action={view.searchAction} data-numeric-filter-form>
+            <!-- Numeric filter group chips -->
+            {view.numericFilterGroups.length > 0 && (
+              <form class="flex items-center gap-1.5 flex-wrap" method="GET" action={view.searchAction} data-numeric-filter-form>
                 {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
                 {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
-                {view.numericFilters.map((filter) => (
-                  <label class:list={["flex items-center gap-2 px-2 py-1 border rounded-btn transition", { "border-primary": filter.active, "border-base-300": !filter.active }]} data-numeric-filter>
-                    <span class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap">{filter.label}</span>
-                    <input
-                      class="range range-xs range-primary w-20"
-                      type="range"
-                      min="0"
-                      max={filter.max}
-                      step={filter.step}
-                      value={filter.value}
-                      aria-label={`${filter.label} slider`}
-                      data-numeric-filter-range
-                    />
-                    <span class="flex items-center gap-1">
-                      <input
-                        type="number"
-                        name={filter.name}
-                        min="0"
-                        max={filter.max}
-                        step={filter.step}
-                        value={filter.active ? filter.value : ""}
-                        placeholder={`${filter.max}`}
-                        class="input input-bordered input-xs w-14 text-right font-mono text-xs"
-                        aria-label={filter.label}
-                        data-numeric-filter-number
-                      />
-                      <span class="font-mono text-[0.7rem] text-base-content/40">{filter.unit}</span>
-                    </span>
-                  </label>
+                {view.numericFilterGroups.map((group) => (
+                  <div class="relative" data-filter-chip-wrapper>
+                    <button
+                      type="button"
+                      class:list={["filter-chip", { "filter-chip-active": group.activeCount > 0 }]}
+                      data-filter-chip
+                      aria-expanded="false"
+                      aria-controls={`filter-popover-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
+                    >
+                      <span class="filter-chip-label">{group.label}</span>
+                      <span class="filter-chip-value">{group.summary}</span>
+                    </button>
+                    <div
+                      id={`filter-popover-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
+                      class="filter-popover"
+                      data-filter-popover
+                    >
+                      <div class="filter-popover-header">{group.label}</div>
+                      <div class="filter-popover-body">
+                        {group.filters.map((filter) => (
+                          <label class="flex flex-col gap-1" data-numeric-filter>
+                            <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">{filter.label}</span>
+                            <input
+                              class="range range-xs range-primary"
+                              type="range"
+                              min="0"
+                              max={filter.max}
+                              step={filter.step}
+                              value={filter.value}
+                              aria-label={`${filter.label} slider`}
+                              data-numeric-filter-range
+                            />
+                            <div class="flex items-center gap-1">
+                              <input
+                                type="number"
+                                name={filter.name}
+                                min="0"
+                                max={filter.max}
+                                step={filter.step}
+                                value={filter.active ? filter.value : ""}
+                                placeholder={`${filter.max}`}
+                                class="input input-bordered input-xs w-20 text-right font-mono text-xs"
+                                aria-label={filter.label}
+                                data-numeric-filter-number
+                              />
+                              <span class="font-mono text-[0.7rem] text-base-content/40">{filter.unit}</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </form>
             )}
 
+            <!-- Sparse rows toggle -->
+            <form method="GET" action={view.searchAction} class="flex items-center flex-shrink-0" data-sparse-toggle-form>
+              {sparseToggleHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+              {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
+              <label class:list={["flex items-center gap-1.5 px-2 py-1 border rounded-md cursor-pointer transition", { "border-primary bg-primary/5": view.state.showSparseRows, "border-base-300": !view.state.showSparseRows }] }>
+                <input
+                  type="checkbox"
+                  name="show-sparse"
+                  value="1"
+                  checked={view.state.showSparseRows}
+                  class="toggle toggle-primary toggle-xs"
+                  aria-label="Show sparse rows"
+                  onchange="this.form?.requestSubmit()"
+                />
+                <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap">Sparse</span>
+                <span class="tooltip tooltip-top z-20" data-tip={sparseRowsTooltip}>
+                  <span class="inline-grid w-3.5 h-3.5 place-items-center border border-base-content/20 rounded-full text-base-content/50 text-[0.58rem] font-extrabold leading-none cursor-help" aria-label={sparseRowsTooltip} tabindex="0">i</span>
+                </span>
+              </label>
+            </form>
+
             {hasActiveNumericFilter && (
-              <a class="btn btn-link btn-xs font-mono font-semibold" href={view.clearFiltersUrl}>Clear filters</a>
+              <a class="btn btn-link btn-xs font-mono font-semibold flex-shrink-0" href={view.clearFiltersUrl}>Clear</a>
             )}
           </div>
 
@@ -131,36 +191,35 @@ if (totalPages <= 7) {
               <!-- Mobile cards -->
               <div class="grid gap-3 p-4 lg:hidden">
                 {view.rows.map((row) => (
-                  <div class:list={["card card-bordered bg-base-100", { "border-primary/30": row.verdict === "pass", "border-warning/30": row.verdict === "conditional", "border-error/30": row.verdict === "fail" }]}>
-                    <div class="card-body p-0">
-                      <div class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200">
-                        <span class:list={["badge badge-sm font-mono font-bold uppercase tracking-[0.04em]", { "badge-success": row.verdict === "pass", "badge-warning": row.verdict === "conditional", "badge-error": row.verdict === "fail", "badge-ghost": row.verdict === "unscored" }]} title={row.verdictTooltip}>{row.verdictLabel}</span>
-                        <a class="btn btn-xs btn-ghost" href={row.actionUrl}>{row.actionLabel}</a>
+                  <div class="card card-bordered bg-base-100">
+                    <div class:list={["flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200", { "border-t-2 border-t-primary": row.verdict === "pass", "border-t-2 border-t-warning": row.verdict === "conditional", "border-t-2 border-t-error": row.verdict === "fail" }]}>
+                      <span class:list={["badge badge-sm font-mono font-bold uppercase tracking-[0.04em]", { "badge-success": row.verdict === "pass", "badge-warning": row.verdict === "conditional", "badge-error": row.verdict === "fail", "badge-ghost": row.verdict === "unscored" }]} title={row.verdictTooltip}>{row.verdictLabel}</span>
+                      <a class:list={["btn btn-xs", { "btn-primary": row.selected, "btn-ghost": !row.selected }]} href={row.actionUrl}>{row.actionLabel}</a>
+                    </div>
+                    <div class="flex flex-col gap-2 p-4">
+                      <h2 class="text-base font-semibold leading-tight">{row.title}</h2>
+                      <p class="text-sm text-base-content/60">{row.subtitle}</p>
+                      <div class="grid grid-cols-2 gap-2 py-1">
+                        {row.mobileMetrics.map((m) => (
+                          <div class:list={["flex flex-col p-2.5 border rounded-btn bg-base-200 font-mono", { "border-error/25 bg-error/[0.04]": m.alert }]}>
+                            <span class:list={["text-[0.6rem] font-bold uppercase tracking-wider text-base-content/40", { "!text-error": m.alert }]}>{m.label}</span>
+                            <span class:list={["text-sm font-semibold", { "text-error font-bold": m.alert }]}>{m.value}</span>
+                          </div>
+                        ))}
                       </div>
-                      <div class="flex flex-col gap-2 p-4">
-                        <h2 class="text-base font-bold leading-tight">{row.title}</h2>
-                        <p class="text-sm text-base-content/60">{row.subtitle}</p>
-                        <div class="grid grid-cols-2 gap-2 py-1">
-                          {row.mobileMetrics.map((m) => (
-                            <div class:list={["flex flex-col p-2 border rounded-btn bg-base-200 font-mono", { "border-error/30 bg-error/5": m.alert }]}>
-                              <span class:list={["text-[0.6rem] font-bold uppercase text-base-content/40", { "!text-error": m.alert }]}>{m.label}</span>
-                              <span class:list={["text-sm font-bold", { "text-error": m.alert }]}>{m.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {row.note && <p class="px-3 py-2 text-sm text-base-content/60 bg-base-200 rounded-btn">{row.note}</p>}
-                      </div>
+                      {row.note && <p class="px-3 py-2 text-sm text-base-content/70 bg-base-200 rounded-btn leading-relaxed">{row.note}</p>}
                     </div>
                   </div>
                 ))}
               </div>
 
               <!-- Desktop table -->
-              <table class="table table-zebra table-sm hidden lg:table">
+              <table class="data-table hidden lg:table">
                 <thead>
                   <tr>
-                    {view.tableHeaders.map((header) => (
-                      <th class="sticky top-0 z-10 bg-base-200 font-mono text-[0.7rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap" aria-sort={header.sortable ? (header.sortDir === "asc" ? "ascending" : header.sortDir === "desc" ? "descending" : "none") : undefined}>
+                    {actionHeader && <th class="action-column">{actionHeader.label}</th>}
+                    {dataTableHeaders.map((header) => (
+                      <th aria-sort={header.sortable ? (header.sortDir === "asc" ? "ascending" : header.sortDir === "desc" ? "descending" : "none") : undefined}>
                         {header.sortable ? (
                           <span class="inline-flex items-center gap-1.5">
                             <a class:list={["inline-flex items-center gap-1 no-underline transition hover:text-primary", { "text-primary": header.sortDir }]} href={header.sortUrl}>
@@ -193,32 +252,37 @@ if (totalPages <= 7) {
                 {view.rows.length > 0 && (
                   <tbody>
                     {view.rows.map((row) => (
-                      <tr class:list={["transition-colors", { "bg-primary/5 shadow-[inset_4px_0_0_0_var(--color-primary)]": row.selected }]}>
+                      <tr class:list={["data-row", { "data-row-selected": row.selected }]}>
+                        <td class="action-column whitespace-nowrap w-[1%]">
+                          <a class:list={["btn btn-xs", { "btn-primary": row.selected, "btn-ghost": !row.selected }]} href={row.actionUrl}>{row.actionLabel}</a>
+                        </td>
                         <td class="whitespace-nowrap w-[1%]">
                           <span class:list={["badge badge-sm font-mono font-bold uppercase tracking-[0.04em]", { "badge-success": row.verdict === "pass", "badge-warning": row.verdict === "conditional", "badge-error": row.verdict === "fail", "badge-ghost": row.verdict === "unscored" }]} title={row.verdictTooltip}>{row.verdictLabel}</span>
                         </td>
                         <td>
                           <div class="grid gap-0.5">
-                            <strong class="text-[0.95rem] font-semibold">{row.title}</strong>
-                            <span class="text-sm text-base-content/60">{row.subtitle}</span>
+                            <strong class="text-[0.95rem] font-semibold leading-snug">{row.title}</strong>
+                            <span class="text-xs text-base-content/50">{row.subtitle}</span>
                           </div>
                         </td>
                         {row.cells.map((value, index) => (
-                          <td class:list={["font-mono text-sm whitespace-nowrap", { "bg-error/10 !text-error font-bold": row.highlightCellIndex === index }]}>
+                          <td class:list={["font-mono text-sm whitespace-nowrap tabular-nums", { "bg-error/[0.06] !text-error font-bold": row.highlightCellIndex === index }]}>
                             {value}
                           </td>
                         ))}
                         <td class="w-[min(18rem,25vw)] max-w-[22rem] text-sm text-base-content/60 leading-relaxed">{row.note}</td>
-                        <td class="whitespace-nowrap w-[1%]">
-                          <a class="btn btn-xs btn-ghost" href={row.actionUrl}>{row.actionLabel}</a>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
                 )}
               </table>
 
-              {view.rows.length === 0 && <div class="py-8 px-6 text-center text-base-content/40 text-sm">No rows match the active filters.</div>}
+              {view.rows.length === 0 && (
+                <div class="py-10 px-6 text-center">
+                  <p class="text-sm font-medium text-base-content/50">No rows match the active filters.</p>
+                  {hasActiveNumericFilter && <a class="btn btn-link btn-sm mt-3" href={view.clearFiltersUrl}>Clear filters</a>}
+                </div>
+              )}
             </div>
 
             <!-- Table footer / pagination -->
@@ -278,7 +342,7 @@ if (totalPages <= 7) {
               <h1 class="text-xl font-bold tracking-[-0.02em] mb-1">{hasAnySelection ? "Current Build" : "SFF Builder"}</h1>
               {hasAnySelection && (
                 <p class="text-sm text-base-content/60">
-                  Status:
+                  Status:{" "}
                   <strong class:list={[{ "text-warning": view.buildStatus === "in-progress" || view.buildStatus === "conditional", "text-success": view.buildStatus === "pass", "text-error": view.buildStatus === "fail" }]}>
                     {view.buildStatusLabel}
                   </strong>
@@ -323,12 +387,11 @@ if (totalPages <= 7) {
                   <div
                     class:list={[
                       "card card-bordered bg-base-100 transition-colors",
-                      `border-l-[3px]`,
                       {
-                        "border-l-primary": slot.verdict === "pass",
-                        "border-l-warning": slot.verdict === "conditional",
-                        "border-l-error": slot.verdict === "fail" || slot.state === "unresolved",
-                        "!border-l-white bg-primary/10": slot.kind === view.state.kind
+                        "border-t-2 border-t-primary": slot.verdict === "pass" && slot.kind !== view.state.kind,
+                        "border-t-2 border-t-warning": slot.verdict === "conditional" && slot.kind !== view.state.kind,
+                        "border-t-2 border-t-error": (slot.verdict === "fail" || slot.state === "unresolved") && slot.kind !== view.state.kind,
+                        "ring-1 ring-primary/20 bg-primary/[0.05]": slot.kind === view.state.kind
                       }
                     ]}
                   >
@@ -362,7 +425,7 @@ if (totalPages <= 7) {
                   </div>
                 ))}
                 {view.slots.some((s) => !s.id) && (
-                  <p class="text-xs text-base-content/40 pt-1 pb-1 text-center">{sidebarHint}</p>
+                  <p class="text-xs text-base-content/50 pt-2 pb-1 text-center font-medium">{sidebarHint}</p>
                 )}
               </>
             )}
@@ -370,7 +433,7 @@ if (totalPages <= 7) {
 
           <!-- Build issues -->
           {view.buildIssues.length > 0 && (
-            <div class="mt-auto mx-4 mb-5 p-4 border-t border-error/30 bg-error/5">
+            <div class="mt-auto mx-4 mb-5 p-4 border border-error/20 rounded-btn bg-error/[0.04]">
               <h3 class="font-mono text-[0.7rem] font-bold uppercase tracking-[0.1em] text-error mb-3">Build Issues</h3>
               {view.buildIssues.map((section) => (
                 <div class="[&+&]:mt-3">
@@ -390,12 +453,22 @@ if (totalPages <= 7) {
   <!-- Header filter bar (hidden until original filters scroll out of view) -->
   <div class="hidden fixed top-16 left-0 right-0 z-40 bg-base-100 border-b border-base-300 shadow-sm lg:left-80 lg:w-[calc(100%-20rem)]" data-header-filters>
     <div class="flex items-center gap-3 px-4 py-1.5 flex-wrap">
-      <div class="flex items-center gap-1 flex-shrink-0" role="tablist" aria-label="Part kinds">
-        {view.kindTabs.map((tab) => (
-          <a class:list={["tab font-mono text-xs font-semibold uppercase tracking-[0.06em] py-2", { "tab-active": tab.active }]} href={tab.href} role="tab" aria-selected={tab.active ? "true" : "false"}>
-            {tab.kind}
-          </a>
-        ))}
+      <div class="overflow-x-auto flex-shrink-0">
+        <div class="tabs tabs-lift tabs-sm min-w-max" role="tablist" aria-label="Part kinds">
+          {view.kindTabs.map((tab) => (
+            <a
+              class:list={[
+                "tab font-mono text-xs font-semibold uppercase tracking-[0.06em]",
+                { "tab-active": tab.active },
+              ]}
+              href={tab.href}
+              role="tab"
+              aria-selected={tab.active ? "true" : "false"}
+            >
+              {tab.kind}
+            </a>
+          ))}
+        </div>
       </div>
       <form class="relative flex-shrink-0 w-[14rem]" method="GET" action={view.searchAction} data-autosubmit-form>
         <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-[0.85rem] h-[0.85rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -403,45 +476,87 @@ if (totalPages <= 7) {
           <path d="M16 16l5 5"></path>
         </svg>
         {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-        <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-xs w-full pl-7" data-autosubmit-input role="searchbox" aria-label="Search models" />
+        <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-xs w-full pl-7 font-mono text-xs" data-autosubmit-input role="searchbox" aria-label="Search models" />
       </form>
 
-      {view.numericFilters.length > 0 && (
-        <form class="flex items-center gap-2 flex-shrink-0" method="GET" action={view.searchAction} data-numeric-filter-form>
+      {view.numericFilterGroups.length > 0 && (
+        <form class="flex items-center gap-1.5 flex-wrap flex-shrink-0" method="GET" action={view.searchAction} data-numeric-filter-form>
           {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
           {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
-          {view.numericFilters.map((filter) => (
-            <label class:list={["flex items-center gap-1.5 px-1.5 py-1 border rounded-btn transition", { "border-primary": filter.active, "border-base-300": !filter.active }]} data-numeric-filter>
-              <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap">{filter.label}</span>
-              <input
-                class="range range-xs range-primary w-12"
-                type="range"
-                min="0"
-                max={filter.max}
-                step={filter.step}
-                value={filter.value}
-                aria-label={`${filter.label} slider`}
-                data-numeric-filter-range
-              />
-              <span class="flex items-center gap-0.5">
-                <input
-                  type="number"
-                  name={filter.name}
-                  min="0"
-                  max={filter.max}
-                  step={filter.step}
-                  value={filter.active ? filter.value : ""}
-                  placeholder={`${filter.max}`}
-                  class="input input-bordered input-xs w-11 text-right font-mono text-[0.65rem]"
-                  aria-label={filter.label}
-                  data-numeric-filter-number
-                />
-                <span class="font-mono text-[0.6rem] text-base-content/40">{filter.unit}</span>
-              </span>
-            </label>
+          {view.numericFilterGroups.map((group) => (
+            <div class="relative" data-filter-chip-wrapper>
+              <button
+                type="button"
+                class:list={["filter-chip", { "filter-chip-active": group.activeCount > 0 }]}
+                data-filter-chip
+                aria-expanded="false"
+                aria-controls={`header-filter-popover-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
+              >
+                <span class="filter-chip-label">{group.label}</span>
+                <span class="filter-chip-value">{group.summary}</span>
+              </button>
+              <div
+                id={`header-filter-popover-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
+                class="filter-popover"
+                data-filter-popover
+              >
+                <div class="filter-popover-header">{group.label}</div>
+                <div class="filter-popover-body">
+                  {group.filters.map((filter) => (
+                    <label class="flex flex-col gap-1" data-numeric-filter>
+                      <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">{filter.label}</span>
+                      <input
+                        class="range range-xs range-primary"
+                        type="range"
+                        min="0"
+                        max={filter.max}
+                        step={filter.step}
+                        value={filter.value}
+                        aria-label={`${filter.label} slider`}
+                        data-numeric-filter-range
+                      />
+                      <div class="flex items-center gap-1">
+                        <input
+                          type="number"
+                          name={filter.name}
+                          min="0"
+                          max={filter.max}
+                          step={filter.step}
+                          value={filter.active ? filter.value : ""}
+                          placeholder={`${filter.max}`}
+                          class="input input-bordered input-xs w-20 text-right font-mono text-xs"
+                          aria-label={filter.label}
+                          data-numeric-filter-number
+                        />
+                        <span class="font-mono text-[0.7rem] text-base-content/40">{filter.unit}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
           ))}
         </form>
       )}
+      <form method="GET" action={view.searchAction} class="flex items-center flex-shrink-0" data-sparse-toggle-form>
+        {sparseToggleHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
+        {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
+        <label class:list={["flex items-center gap-1.5 px-1.5 py-1 border rounded-md cursor-pointer transition", { "border-primary bg-primary/5": view.state.showSparseRows, "border-base-300": !view.state.showSparseRows }] }>
+          <input
+            type="checkbox"
+            name="show-sparse"
+            value="1"
+            checked={view.state.showSparseRows}
+            class="toggle toggle-primary toggle-xs"
+            aria-label="Show sparse rows"
+            onchange="this.form?.requestSubmit()"
+          />
+          <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap">Sparse</span>
+          <span class="tooltip tooltip-top z-20" data-tip={sparseRowsTooltip}>
+            <span class="inline-grid w-3.5 h-3.5 place-items-center border border-base-content/20 rounded-full text-base-content/50 text-[0.58rem] font-extrabold leading-none cursor-help" aria-label={sparseRowsTooltip} tabindex="0">i</span>
+          </span>
+        </label>
+      </form>
       {hasActiveNumericFilter && (
         <a class="btn btn-link btn-xs font-mono font-semibold flex-shrink-0" href={view.clearFiltersUrl}>Clear</a>
       )}

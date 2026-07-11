@@ -1,7 +1,7 @@
 import { initAutocomplete } from "./autocomplete";
 import { initAutosubmitForms } from "./autosubmit-form";
-import { initDrawer } from "./drawer";
 import { initNumericFilters } from "./numeric-filters";
+import { initFilterPopovers } from "./filter-popovers";
 
 const onIdle = (callback: () => void) => {
   const idleWindow = window as Window & {
@@ -18,6 +18,6 @@ const onIdle = (callback: () => void) => {
 onIdle(() => {
   initAutocomplete();
   initAutosubmitForms();
-  initDrawer();
   initNumericFilters();
+  initFilterPopovers();
 });

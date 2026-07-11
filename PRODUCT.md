@@ -59,6 +59,7 @@ The current MVP supports:
 - Selecting incompatible combinations intentionally.
 - Showing exact fit issues and warning messages.
 - Displaying clearance values for length, width, thickness, and PCIe slots.
+- Hiding rows with no fitment-relevant data from the default `/build` table while keeping them available through the URL-backed **Show sparse rows** toggle.
 - Storing production data in Cloudflare D1.
 - Running locally against a seeded Cloudflare D1 database.
 
@@ -104,6 +105,7 @@ These are future layers once the case/GPU engine is trustworthy.
 ## Future Ideas
 
 - Community-intent filters: support saved, named filter bundles for common builder goals that show up repeatedly in forums and Reddit threads. For example, a `console-like SFF` filter could narrow the case table to living-room or console-style cases, then let users inspect which GPUs and other parts fit those cases. These should remain filter-and-explain tools, not ranked recommendations: failing and conditional rows should stay visible with evidence, and any subjective labels such as "console-like", "sandwich style", or "vertical footprint" should be treated as explicit, reviewable catalog attributes with provenance.
+- 3D-printable SFF case directory: start printable/open-source case projects as a separate informative directory rather than adding them directly to the `/build` fitment table. Only promote printable cases into the core case catalog after their dimensional constraints are manually verified. See [Future Feature: 3D-Printable SFF Case Directory](./docs/future-printable-cases.md).
 
 ## User Experience Direction
 
@@ -116,6 +118,7 @@ The preferred direction is:
 - Dense, scan-friendly data.
 - Stark visual hierarchy.
 - Ghost incompatible parts instead of hiding them.
+- Hide rows that have no fitment-relevant evidence by default, with a visible toggle to include them when auditing the full catalog; this must not hide `pass`, `conditional`, or `fail` rows.
 - Explain every failure with a concrete reason.
 - Let users choose invalid combinations so they can learn why they fail.
 - Treat warnings as first-class information, not footnotes.
