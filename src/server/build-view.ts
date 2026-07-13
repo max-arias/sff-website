@@ -12,13 +12,8 @@ import {
   type PsuTierFilter,
   type SelectableKind,
 } from "../lib/build-state";
-import {
-  loadCatalog,
-  loadCatalogPartsByIds,
-  loadParts,
-  searchCatalog,
-} from "./d1";
 import type { CasePart, FitVerdict, GenericPart, GpuPart } from "../types";
+import type { CatalogStore } from "./catalog-store";
 import {
   evaluateCandidateFitment as engineEvaluateCandidateFitment,
   type BuildContext,
@@ -1880,22 +1875,34 @@ const PSU_FILTER_GROUP_ORDER = [
   "Physical",
 ];
 
+/**
+ * Create a D1-backed CatalogStore. Defined as a separate function so
+ * the top-level module does not eagerly import the D1 adapter (which
+ * depends on cloudflare:workers).
+ */
+async function defaultStore(context: APIContext): Promise<CatalogStore> {
+  const { D1CatalogStore } = await import("./d1-catalog-store");
+  return new D1CatalogStore(context);
+}
+
 export async function getBuildView(
   context: APIContext,
   url: URL,
+  store?: CatalogStore,
 ): Promise<BuildView> {
+  const storeInstance = store ?? (await defaultStore(context));
   const state = parseBuildQuery(url);
   const selectedIds = state.selectedIds;
-  const parts = await loadParts(context);
+  const parts = await storeInstance.loadParts();
   const selectedIdList = slotOrder
     .map(({ kind }) => selectedIds[kind])
     .filter((id): id is string => Boolean(id));
-  const lookup = await loadCatalogPartsByIds(context, selectedIdList);
+  const lookupParts = await storeInstance.loadPartsByIds(selectedIdList);
   const partIndex = new Map<string, PartRecord>();
 
   parts.cases.forEach((part) => partIndex.set(part.id, part));
   parts.gpus.forEach((part) => partIndex.set(part.id, part));
-  lookup.parts.forEach((part) => {
+  lookupParts.forEach((part) => {
     if (!partIndex.has(part.id)) partIndex.set(part.id, part);
   });
 
@@ -1949,7 +1956,7 @@ export async function getBuildView(
   }
 
   const candidates = filterSparseRows(
-    (await loadCandidates(context, state, parts)).candidates,
+    (await loadCandidates(storeInstance, state, parts)).candidates,
     state,
   );
   const numericFilterSource =
@@ -2040,9 +2047,9 @@ export async function getBuildView(
 }
 
 async function loadCandidates(
-  context: APIContext,
+  store: CatalogStore,
   state: BuildQueryState,
-  parts: Awaited<ReturnType<typeof loadParts>>,
+  parts: { cases: CasePart[]; gpus: GpuPart[] },
 ): Promise<{ totalRows: number; candidates: PartRecord[] }> {
   const metricDefs = metricColumnsFor(state.kind);
   if (state.kind === "case" || state.kind === "gpu") {
@@ -2050,13 +2057,13 @@ async function loadCandidates(
     const filtered = state.search.trim()
       ? state.kind === "case"
         ? await searchTypedCandidates(
-            context,
+            store,
             parts.cases,
             state.kind,
             state.search,
           )
         : await searchTypedCandidates(
-            context,
+            store,
             parts.gpus,
             state.kind,
             state.search,
@@ -2076,14 +2083,9 @@ async function loadCandidates(
     };
   }
 
-  const catalog = await loadCatalog(context, {
-    kind: state.kind,
-    page: 1,
-    pageSize: 5000,
-    search: state.search,
-  });
+  const kindParts = await store.loadKindCatalog(state.kind, state.search);
 
-  let candidates: PartRecord[] = catalog.parts.filter(
+  let candidates: PartRecord[] = kindParts.filter(
     (part): part is GenericPart & { kind: SelectableKind } =>
       part.kind === state.kind,
   );
@@ -2188,15 +2190,13 @@ function applyCaseIntentFilter(parts: PartRecord[], state: BuildQueryState) {
 }
 
 async function searchTypedCandidates<T extends CasePart | GpuPart>(
-  context: APIContext,
+  store: CatalogStore,
   pool: T[],
   kind: SelectableKind,
   query: string,
 ) {
   const partsById = new Map(pool.map((part) => [part.id, part]));
-  const suggestions = (
-    await searchCatalog(context, { query, kind, limit: 1000 })
-  ).suggestions;
+  const suggestions = await store.searchSuggestions(query, kind, 1000);
 
   return suggestions
     .map((suggestion) => partsById.get(suggestion.id))
