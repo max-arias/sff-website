@@ -27,6 +27,7 @@
     "test:fitment": "tsx src/fitment/engine.test.ts",
     "test:build-view": "tsx src/server/build-view.test.ts",
     "test:build-state": "tsx src/lib/build-state.test.ts",
+    "test:build-filter-params": "tsx src/lib/build-filter-params.test.ts",
 "intake": "tsx scripts/intake.ts",
 "intake:audit": "tsx scripts/audit-sff-workbook.ts",
 "intake:enrich": "tsx scripts/enrich-psu-tiers.ts",
