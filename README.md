@@ -57,3 +57,21 @@ The catalog is stored in per-kind D1 tables (`cases`, `gpus`, `cpu_coolers`, `fa
 Rows with incomplete dimensions are imported and preserved. Rows that have enough fitment context to evaluate should surface uncertainty as warnings; rows with no fitment-relevant fields are hidden from `/build` by default but can be restored with `show-sparse=1`.
 
 For the data model details, see [DATA.md](./DATA.md).
+
+## Architecture Notes And TODOs
+
+Architecture review artifacts are saved in [`docs/architecture/`](./docs/architecture/):
+
+- [Architecture review HTML report](./docs/architecture/architecture-review-20260713.html)
+- [Session handoff](./docs/architecture/session-handoff-20260713.md)
+- [Continuation prompt](./docs/architecture/continuation-prompt-20260713.md)
+
+Recent cleanup refactors extracted the fitment engine, added a catalog-store seam, centralized build query serialization, and centralized numeric filter params. See [`docs/architecture/README.md`](./docs/architecture/README.md) for details.
+
+Current architecture TODOs:
+
+- Review the refactor series for standards and product-spec alignment.
+- Replace row-level `highlightCellIndex` with a cell-level evidence model while keeping `src/fitment/` UI-agnostic.
+- Implement constraint-aware empty-slot actions / constraint jumps without breaking the public URL query contract.
+- Surface provenance/source attribution as a first-class fitment evidence feature.
+- Continue shrinking `src/server/build-view.ts` through small, tested seams.
