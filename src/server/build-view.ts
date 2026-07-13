@@ -5,6 +5,8 @@ import {
   slotOrder,
   tabOrder,
   type BuildQueryState,
+  type CaseIntent,
+  type CaseVolumeTier,
   type SelectableKind,
 } from "../lib/build-state";
 import { checkCaseGpuCompatibility } from "../lib/compatibility";
@@ -88,14 +90,23 @@ export interface BuildViewNumericFilter {
   step: number;
   value: number;
   active: boolean;
+  derived: boolean;
   group: string;
 }
 
 export interface BuildViewNumericFilterGroup {
   label: string;
   filters: BuildViewNumericFilter[];
+  options: BuildViewFilterOption[];
   activeCount: number;
   summary: string;
+}
+
+export interface BuildViewFilterOption {
+  label: string;
+  href: string;
+  active: boolean;
+  tooltip?: string;
 }
 
 export interface BuildView {
@@ -158,11 +169,29 @@ function cVal<R>(part: PartRecord, fn: (c: CasePart) => R, fallback: R): R {
   return isCasePart(part) ? fn(part) : fallback;
 }
 
+function caseFootprintCm2(c: CasePart): number | null {
+  if (c.dimensions.footprintCm2 !== null) return c.dimensions.footprintCm2;
+  const { lengthMm, widthMm } = c.dimensions;
+  if (lengthMm === null || widthMm === null) return null;
+  return (lengthMm * widthMm) / 100;
+}
+
 function gVal<R>(part: PartRecord, fn: (g: GpuPart) => R, fallback: R): R {
   return isGpuPart(part) ? fn(part) : fallback;
 }
 
 const CASE_COLUMNS: MetricColumnDef[] = [
+  {
+    key: "volume",
+    label: "Volume",
+    getValue: (p) =>
+      cVal(p, (c) => formatValue(c.dimensions.volumeL, "L"), "—"),
+    numericFilter: {
+      paramKey: "case-max-volume-l",
+      unit: "L",
+      rawValue: (p) => cVal(p, (c) => c.dimensions.volumeL, null),
+    },
+  },
   {
     key: "style",
     label: "Style",
@@ -212,25 +241,14 @@ const CASE_COLUMNS: MetricColumnDef[] = [
     },
   },
   {
-    key: "volume",
-    label: "Volume",
-    getValue: (p) =>
-      cVal(p, (c) => formatValue(c.dimensions.volumeL, "L"), "—"),
-    numericFilter: {
-      paramKey: "case-max-volume-l",
-      unit: "L",
-      rawValue: (p) => cVal(p, (c) => c.dimensions.volumeL, null),
-    },
-  },
-  {
     key: "footprint",
     label: "Footprint",
     getValue: (p) =>
-      cVal(p, (c) => formatValue(c.dimensions.footprintCm2, "cm²"), "—"),
+      cVal(p, (c) => formatValue(caseFootprintCm2(c), "cm²"), "—"),
     numericFilter: {
       paramKey: "case-max-footprint-cm2",
       unit: "cm²",
-      rawValue: (p) => cVal(p, (c) => c.dimensions.footprintCm2, null),
+      rawValue: (p) => cVal(p, caseFootprintCm2, null),
     },
   },
   {
@@ -964,8 +982,8 @@ const COOLER_COLUMNS: MetricColumnDef[] = [
 const PSU_COLUMNS: MetricColumnDef[] = [
   {
     key: "tier",
-    label: "Tier",
-    getValue: (p) => (isGenericPart(p) ? psuTierLabel(p) || "—" : "—"),
+    label: "Rating",
+    getValue: (p) => (isGenericPart(p) ? psuTierBadge(p) || "—" : "—"),
   },
   {
     key: "form-factor",
@@ -1655,6 +1673,27 @@ function metricColumnsFor(kind: SelectableKind): MetricColumnDef[] {
 const pageSize = 25;
 const psuPageSize = 500;
 
+const CASE_VOLUME_TIERS: Array<{ value: CaseVolumeTier; label: string }> = [
+  { value: "sub-10l", label: "<10L" },
+  { value: "10l-20l", label: "10L-20L" },
+  { value: "over-20l", label: ">20L" },
+];
+
+const STEAM_MACHINE_CASE_INTENT = {
+  minVolumeL: 3,
+  maxVolumeL: 6,
+  maxDimensionMm: 220,
+  maxAspectRatio: 1.45,
+} as const;
+
+const CASE_INTENT_OPTIONS: Array<{ value: CaseIntent; label: string; tooltip: string }> = [
+  {
+    value: "steam-machine",
+    label: "Steam Machine-like",
+    tooltip: "Near-cube cases close to Valve's current Steam Machine, roughly 3-6 L.",
+  },
+];
+
 const FILTER_GROUPS: Record<string, Record<string, string>> = {
   case: {
     "case-max-length-mm": "Dimensions",
@@ -1931,9 +1970,11 @@ export async function getBuildView(
     searchAction: "/build",
     hiddenInputs: searchHiddenInputs(state),
     numericFilters: numericFilters(state, parts),
-    numericFilterGroups: groupNumericFilters(numericFilters(state, parts)),
+    numericFilterGroups: groupNumericFilters(state, numericFilters(state, parts)),
     clearFiltersUrl: buildUrl(state, {
       numericFilters: {},
+      caseVolumeTier: null,
+      caseIntent: null,
       resetPage: true,
     }),
     tableHeaders: tableHeaders(state),
@@ -1973,7 +2014,13 @@ async function loadCandidates(
             state.search,
           )
       : pool;
-    const narrowed = applyNumericFilters(filtered, state, metricDefs);
+    const narrowed = applyCaseIntentFilter(
+      applyCaseVolumeTierFilter(
+        applyNumericFilters(filtered, state, metricDefs),
+        state,
+      ),
+      state,
+    );
     const totalRows = narrowed.length;
     return {
       totalRows,
@@ -2044,6 +2091,38 @@ function applyNumericFilters(
       return value !== null && value !== undefined && value <= max;
     }),
   );
+}
+
+function applyCaseVolumeTierFilter(parts: PartRecord[], state: BuildQueryState) {
+  if (state.kind !== "case" || !state.caseVolumeTier) return parts;
+  return parts.filter((part) => {
+    if (!isCasePart(part) || part.dimensions.volumeL === null) return false;
+    const volume = part.dimensions.volumeL;
+    if (state.caseVolumeTier === "sub-10l") return volume < 10;
+    if (state.caseVolumeTier === "10l-20l") return volume >= 10 && volume < 20;
+    return volume >= 20;
+  });
+}
+
+function applyCaseIntentFilter(parts: PartRecord[], state: BuildQueryState) {
+  if (state.kind !== "case" || !state.caseIntent) return parts;
+  if (state.caseIntent !== "steam-machine") return parts;
+  return parts.filter((part) => {
+    if (!isCasePart(part)) return false;
+    const { volumeL, lengthMm, widthMm, heightMm } = part.dimensions;
+    // Must have known volume and all three dimensions
+    if (volumeL === null || lengthMm === null || widthMm === null || heightMm === null) return false;
+    if (
+      volumeL < STEAM_MACHINE_CASE_INTENT.minVolumeL ||
+      volumeL > STEAM_MACHINE_CASE_INTENT.maxVolumeL
+    ) return false;
+    // Near-cube: largest dimension / smallest dimension <= 1.45
+    const sorted = [lengthMm, widthMm, heightMm].sort((a, b) => a - b);
+    const ratio = sorted[2] / sorted[0];
+    if (ratio > STEAM_MACHINE_CASE_INTENT.maxAspectRatio) return false;
+    if (sorted[2] > STEAM_MACHINE_CASE_INTENT.maxDimensionMm) return false;
+    return true;
+  });
 }
 
 async function searchTypedCandidates<T extends CasePart | GpuPart>(
@@ -2138,7 +2217,7 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
   const fitment = evaluateCandidateFitment(ctx, part);
   const note = fitment.messages[0] || fitment.notes[0] || fallbackNote(part);
   const cells = metricCells(part);
-  const metricLabels = tableHeaderLabels(ctx.state.kind).slice(2, -2);
+  const metricLabels = tableHeaderLabels(ctx.state.kind).slice(1, -2);
 
   return {
     id: part.id,
@@ -2175,8 +2254,8 @@ function rowSort(a: BuildViewRow, b: BuildViewRow, state: BuildQueryState) {
 
   if (state.sort !== "fitment") {
     const delta = compareSortValue(
-      sortValue(a, state.sort),
-      sortValue(b, state.sort),
+      sortValue(a, state.sort, state),
+      sortValue(b, state.sort, state),
     );
     if (delta !== 0) return delta * direction;
   }
@@ -2191,13 +2270,22 @@ function rowSort(a: BuildViewRow, b: BuildViewRow, state: BuildQueryState) {
   return a.title.localeCompare(b.title);
 }
 
-function sortValue(row: BuildViewRow, key: string) {
+function sortValue(row: BuildViewRow, key: string, state: BuildQueryState) {
   if (key === "status") return verdictRank(row.verdict);
   if (key === "name") return row.title;
   if (key === "notes") return row.note;
   if (key === "release-year") return row.releaseYear ?? "";
   const metricMatch = key.match(/^metric-(\d+)$/);
-  if (metricMatch) return row.cells[Number(metricMatch[1])] ?? "";
+  if (metricMatch) {
+    const metricIndex = Number(metricMatch[1]);
+    const value = row.cells[metricIndex] ?? "";
+    if (state.kind === "psu" && metricIndex === 0) {
+      // Rating is quality-ranked, not alphabetic. Lower tier rank is better,
+      // so negate it so the UI's descending sort puts best PSUs first.
+      return -psuTierRank(value);
+    }
+    return value;
+  }
   return row.title;
 }
 
@@ -2221,9 +2309,21 @@ function numericPrefix(value: string) {
   return match ? Number(match[0]) : null;
 }
 
+/**
+ * Convert a PSU rating display label (e.g. "Platinum · Tier A+", "Tier B") to a numeric
+ * rank where lower is better. Follows the same logic as tierRank() in
+ * psu-tier-list.ts:  A+ → -0.2, A → 0, A- → 0.2, B → 1, etc.
+ * Unrecognized labels sort last (rank 99).
+ */
 function psuTierRank(label: string) {
-  const match = label.match(/\d+/);
-  return match ? Number(match[0]) : 99;
+  const tier = (label.match(/\bTier\s+([A-F][+-]?)/i)?.[1] ?? label).trim().toUpperCase();
+  if (!tier) return 99;
+  const letter = tier[0];
+  const baseRank = "ABCDEF".indexOf(letter);
+  if (baseRank < 0) return 99;
+  const suffix = tier.slice(1);
+  const modifier = suffix.includes("+") ? -0.2 : suffix.includes("-") ? 0.2 : 0;
+  return baseRank + modifier;
 }
 
 function getBuildStatus(
@@ -2303,6 +2403,12 @@ function searchHiddenInputs(state: BuildQueryState) {
   if (state.sort === "release-year" && state.dir !== "desc")
     inputs.push({ name: "dir", value: state.dir });
   if (state.showSparseRows) inputs.push({ name: "show-sparse", value: "1" });
+  if (state.kind === "case" && state.caseVolumeTier) {
+    inputs.push({ name: "case-volume", value: state.caseVolumeTier });
+  }
+  if (state.kind === "case" && state.caseIntent) {
+    inputs.push({ name: "case-intent", value: state.caseIntent });
+  }
   numericFilterInputs(state).forEach((input) => inputs.push(input));
   return inputs;
 }
@@ -2334,12 +2440,14 @@ function numericFilters(
         ? parts.gpus
         : [];
   const groups = FILTER_GROUPS[state.kind] ?? {};
-  return filterDefs.map((def) => {
+  return filterDefs.flatMap((def) => {
     const values = allParts
       .map((p) => def.rawValue(p))
-      .filter((v): v is number => v !== null);
-    const max = Math.ceil(Math.max(0, ...values, 1));
-    return makeNumericFilter(
+      .filter((v): v is number => v !== null && Number.isFinite(v));
+    if (!values.length) return [];
+    const max = Math.ceil(Math.max(...values));
+    if (max <= 0) return [];
+    return [makeNumericFilter(
       def.paramKey,
       def.paramKey
         .replace(/^(case|max|gpu|psu|cooler|mobo|ram)-/, "")
@@ -2348,10 +2456,25 @@ function numericFilters(
       def.unit,
       max,
       1,
-      state.numericFilters[def.paramKey] ?? null,
+      state.numericFilters[def.paramKey] ?? derivedNumericFilterValue(state, def.paramKey),
+      state.numericFilters[def.paramKey] === undefined && derivedNumericFilterValue(state, def.paramKey) !== null,
       groups[def.paramKey] ?? "Specs",
-    );
+    )];
   });
+}
+
+function derivedNumericFilterValue(
+  state: BuildQueryState,
+  paramKey: string,
+): number | null {
+  if (state.kind !== "case" || state.caseIntent !== "steam-machine") return null;
+  if (paramKey === "case-max-volume-l") return STEAM_MACHINE_CASE_INTENT.maxVolumeL;
+  if (
+    paramKey === "case-max-length-mm" ||
+    paramKey === "case-max-width-mm" ||
+    paramKey === "case-max-height-mm"
+  ) return STEAM_MACHINE_CASE_INTENT.maxDimensionMm;
+  return null;
 }
 
 function makeNumericFilter(
@@ -2361,6 +2484,7 @@ function makeNumericFilter(
   max: number,
   step: number,
   value: number | null,
+  derived: boolean,
   group: string,
 ): BuildViewNumericFilter {
   return {
@@ -2370,12 +2494,14 @@ function makeNumericFilter(
     max,
     step,
     value: value ?? max,
-    active: value !== null,
+    active: value !== null && !derived,
+    derived,
     group,
   };
 }
 
 function groupNumericFilters(
+  state: BuildQueryState,
   filters: BuildViewNumericFilter[],
 ): BuildViewNumericFilterGroup[] {
   const map = new Map<string, BuildViewNumericFilter[]>();
@@ -2385,19 +2511,50 @@ function groupNumericFilters(
     map.set(filter.group, list);
   }
   return Array.from(map.entries()).map(([label, groupFilters]) => {
+    const options = filterOptionsForGroup(state, label);
     const active = groupFilters.filter((f) => f.active);
-    const activeCount = active.length;
+    const activeOptions = options.filter((option) => option.active);
+    const activeCount = active.length + activeOptions.length;
     let summary: string;
     if (activeCount === 0) {
       summary = "Any";
+    } else if (activeOptions.length === 1 && active.length === 0) {
+      summary = activeOptions[0].label;
     } else if (activeCount === 1) {
       const f = active[0];
       summary = `${f.value}${f.unit}`;
     } else {
       summary = `${activeCount} active`;
     }
-    return { label, filters: groupFilters, activeCount, summary };
+    return { label, filters: groupFilters, options, activeCount, summary };
   });
+}
+
+function filterOptionsForGroup(
+  state: BuildQueryState,
+  group: string,
+): BuildViewFilterOption[] {
+  if (state.kind !== "case" || group !== "Dimensions") return [];
+  const options: BuildViewFilterOption[] = CASE_VOLUME_TIERS.map((tier) => ({
+    label: tier.label,
+    href: buildUrl(state, {
+      caseVolumeTier: state.caseVolumeTier === tier.value ? null : tier.value,
+      resetPage: true,
+    }),
+    active: state.caseVolumeTier === tier.value,
+  }));
+  for (const intent of CASE_INTENT_OPTIONS) {
+    options.push({
+      label: intent.label,
+      href: buildUrl(state, {
+        caseIntent: state.caseIntent === intent.value ? null : intent.value,
+        resetPage: true,
+      }),
+      active: state.caseIntent === intent.value,
+      tooltip: intent.tooltip,
+    });
+  }
+  return options;
 }
 
 function tableHeaders(state: BuildQueryState): BuildViewTableHeader[] {
@@ -2423,7 +2580,6 @@ function tableHeaderLabels(kind: SelectableKind) {
   const identityLabel =
     kind === "case" ? "Case" : kind === "gpu" ? "Model" : "Name";
   return [
-    "Status",
     identityLabel,
     ...metricDefs.map((d) => d.label),
     "Notes",
@@ -2432,11 +2588,10 @@ function tableHeaderLabels(kind: SelectableKind) {
 }
 
 function headerSortKey(index: number, headerCount: number) {
-  if (index === 0) return "status";
-  if (index === 1) return "name";
+  if (index === 0) return "name";
   if (index === headerCount - 2) return "notes";
   if (index === headerCount - 1) return "action";
-  return `metric-${index - 2}`;
+  return `metric-${index - 1}`;
 }
 
 function constraintMeters(ctx: EvalContext) {
@@ -2586,6 +2741,28 @@ function buildFilterChips(
     });
   }
 
+  if (state.kind === "case" && state.caseVolumeTier) {
+    const tier = CASE_VOLUME_TIERS.find(
+      (candidate) => candidate.value === state.caseVolumeTier,
+    );
+    chips.push({
+      label: `Volume: ${tier?.label ?? state.caseVolumeTier}`,
+      href: buildUrl(state, { caseVolumeTier: null, resetPage: true }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "case" && state.caseIntent) {
+    const intent = CASE_INTENT_OPTIONS.find(
+      (candidate) => candidate.value === state.caseIntent,
+    );
+    chips.push({
+      label: intent?.label ?? state.caseIntent,
+      href: buildUrl(state, { caseIntent: null, resetPage: true }),
+      tone: "active",
+    });
+  }
+
   // Numeric filter chips from generic map
   const metricDefs = metricColumnsFor(state.kind);
   for (const def of metricDefs) {
@@ -2663,7 +2840,7 @@ function fallbackNote(part: PartRecord) {
   }
   if (isGenericPart(part) && part.kind === "psu") {
     return compactJoin([
-      psuTierLabel(part),
+      psuTierBadge(part),
       specValue(part, ["form_factor", "psu"]),
       `Wattage ${dimensionValue(part, ["wattage", "watt", "watts"], "W")}`,
     ]);
@@ -2974,10 +3151,7 @@ function displayTitle(part: PartRecord | null) {
 
 function displaySubtitle(part: PartRecord | null) {
   if (!part) return "";
-  if (isCasePart(part))
-    return part.dimensions.volumeL
-      ? `${formatValue(part.dimensions.volumeL, "L")} volume`
-      : part.style || part.sourceSheet;
+  if (isCasePart(part)) return part.style || part.sourceSheet;
   if (isGpuPart(part))
     return (
       part.brand ||
@@ -2993,7 +3167,7 @@ function displaySubtitle(part: PartRecord | null) {
     return (
       [
         specValue(part, ["form_factor"]),
-        psuTierLabel(part),
+        psuTierBadge(part),
         specValue(part, ["80_plus_rating"]),
       ]
         .filter(Boolean)
@@ -3058,7 +3232,7 @@ function slotSpecs(
     ]);
   if (part && isGenericPart(part) && part.kind === "psu")
     return compactSpecs([
-      ["Tier", psuTierLabel(part) || "-"],
+      ["Rating", psuTierBadge(part) || "-"],
       ["Form factor", specValue(part, ["form_factor", "psu"])],
       ["Wattage", dimensionValue(part, ["wattage", "watt", "watts"], "W")],
       ["Modular", yesNoValue(part, ["modular"])],
@@ -3171,7 +3345,165 @@ function rawSpecValue(value: unknown) {
 
 function psuTierLabel(part: GenericPart) {
   const tier = specValue(part, ["psu_tier"]);
+  const efficiency = formatPsuEfficiency(
+    specValue(part, ["psu_tier_efficiency", "efficiency_80plus", "efficiency"]),
+  );
+  if (efficiency && tier) return `${efficiency} · Tier ${tier}`;
+  if (efficiency) return efficiency;
   return tier ? `Tier ${tier}` : "";
+}
+
+function formatPsuEfficiency(value: string) {
+  const code = value.trim().toUpperCase();
+  const efficiencyCodes: Record<string, string> = {
+    T: "Titanium",
+    P: "Platinum",
+    G: "Gold",
+    S: "Silver",
+    B: "Bronze",
+    W: "White",
+  };
+  if (efficiencyCodes[code]) return efficiencyCodes[code];
+
+  const normalized = value
+    .replace(/80\s*\+|80\s*plus/gi, "")
+    .replace(/cybenetics\s+eta/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized === "-") return "";
+  return normalized
+    .toLowerCase()
+    .split(/([\s/-]+)/)
+    .map((part) =>
+      /^[a-z]/.test(part) ? part[0].toUpperCase() + part.slice(1) : part,
+    )
+    .join("");
+}
+
+function psuTierGrade(part: GenericPart): string {
+  const tier = specValue(part, ["psu_tier"]);
+  if (!tier) return "unknown";
+  const match = tier.match(/^([A-F][+-]?)/i);
+  return match ? match[1].toUpperCase() : "unknown";
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function psuEfficiencyLevel(
+  part: GenericPart,
+): "premium" | "good" | "standard" | "unknown" {
+  const eff = formatPsuEfficiency(
+    specValue(part, [
+      "psu_tier_efficiency",
+      "efficiency_80plus",
+      "efficiency",
+    ]),
+  );
+  if (!eff) return "unknown";
+  if (eff === "Titanium" || eff === "Platinum") return "premium";
+  if (eff === "Gold") return "good";
+  return "standard";
+}
+
+type PsuEfficiencyLevel = "premium" | "good" | "standard" | "unknown";
+
+// Icon + bg indices for every (grade, efficiency) combination.
+// bg: 0=subtle tint, 1=medium tint, 2=strong tint.
+// icon: higher = darker/richer against the theme base-content.
+const PSU_BADGE_INDICES: Record<string, Record<PsuEfficiencyLevel, { icon: number; bg: number }>> = {
+  "A+": { premium: { icon: 9, bg: 2 }, good: { icon: 8, bg: 1 }, standard: { icon: 5, bg: 0 }, unknown: { icon: 5, bg: 0 } },
+  "A":  { premium: { icon: 8, bg: 2 }, good: { icon: 7, bg: 1 }, standard: { icon: 4, bg: 0 }, unknown: { icon: 4, bg: 0 } },
+  "A-": { premium: { icon: 7, bg: 1 }, good: { icon: 6, bg: 0 }, standard: { icon: 3, bg: 0 }, unknown: { icon: 3, bg: 0 } },
+  "B+": { premium: { icon: 9, bg: 2 }, good: { icon: 8, bg: 1 }, standard: { icon: 5, bg: 0 }, unknown: { icon: 5, bg: 0 } },
+  "B":  { premium: { icon: 8, bg: 2 }, good: { icon: 7, bg: 1 }, standard: { icon: 4, bg: 0 }, unknown: { icon: 4, bg: 0 } },
+  "B-": { premium: { icon: 7, bg: 1 }, good: { icon: 5, bg: 0 }, standard: { icon: 3, bg: 0 }, unknown: { icon: 3, bg: 0 } },
+  "C+": { premium: { icon: 8, bg: 2 }, good: { icon: 7, bg: 1 }, standard: { icon: 6, bg: 0 }, unknown: { icon: 6, bg: 0 } },
+  "C":  { premium: { icon: 7, bg: 2 }, good: { icon: 6, bg: 1 }, standard: { icon: 5, bg: 0 }, unknown: { icon: 5, bg: 0 } },
+  "C-": { premium: { icon: 6, bg: 1 }, good: { icon: 5, bg: 0 }, standard: { icon: 4, bg: 0 }, unknown: { icon: 4, bg: 0 } },
+  "D":  { premium: { icon: 8, bg: 2 }, good: { icon: 7, bg: 1 }, standard: { icon: 6, bg: 0 }, unknown: { icon: 6, bg: 0 } },
+  "E":  { premium: { icon: 9, bg: 2 }, good: { icon: 8, bg: 1 }, standard: { icon: 7, bg: 0 }, unknown: { icon: 7, bg: 0 } },
+  "F":  { premium: { icon: 9, bg: 2 }, good: { icon: 8, bg: 1 }, standard: { icon: 6, bg: 0 }, unknown: { icon: 6, bg: 0 } },
+};
+
+/** Map a PSU grade to a theme-respecting hue using Tailwind semantic colors. */
+function psuTierHue(grade: string): string {
+  const letter = grade[0] ?? "";
+  if (letter === "A") return "var(--color-success)";
+  if (letter === "B") return "color-mix(in oklab, var(--color-success) 30%, var(--color-info) 70%)";
+  if (letter === "C") return "var(--color-warning)";
+  if (letter === "D") return "color-mix(in oklab, var(--color-warning) 55%, var(--color-error) 45%)";
+  if (letter === "E" || letter === "F") return "var(--color-error)";
+  return "var(--color-base-content)";
+}
+
+/** Background tint intensity derived from the efficiency level. */
+function psuTierBgColor(hue: string, bgIndex: number): string {
+  const mix = bgIndex === 2 ? "20%" : bgIndex === 1 ? "12%" : "6%";
+  const base = bgIndex === 0 ? "transparent" : "var(--color-base-100)";
+  return `color-mix(in oklab, ${hue} ${mix}, ${base})`;
+}
+
+/** Icon color darkness/richness derived from the icon index. */
+function psuTierIconColor(hue: string, iconIndex: number): string {
+  if (hue === "var(--color-base-content)") {
+    // Neutral/unknown: vary opacity against transparent
+    const opacity = 35 + iconIndex * 6;
+    return `color-mix(in oklab, var(--color-base-content) ${opacity}%, transparent)`;
+  }
+  const pct = 25 + iconIndex * 7;
+  return `color-mix(in oklab, ${hue} ${pct}%, var(--color-base-content))`;
+}
+
+function psuTierBadgeMeta(grade: string, efficiency: PsuEfficiencyLevel) {
+  const letter = grade[0] ?? "";
+  const hue = psuTierHue(grade);
+  const idx = PSU_BADGE_INDICES[grade]?.[efficiency] ?? { icon: 4, bg: 0 };
+
+  const bgColor = psuTierBgColor(hue, idx.bg);
+  const iconColor = psuTierIconColor(hue, idx.icon);
+
+  // Icon chosen by efficiency + tier
+  const isHighTier = letter === "A" || letter === "B";
+  const isPremiumCombo = efficiency === "premium" && letter === "A";
+  const isGoodCombo =
+    (efficiency === "premium" && letter === "B") ||
+    (efficiency === "good" && isHighTier);
+
+  let iconSvg: string;
+  if (isPremiumCombo) {
+    // Premium: filled star
+    iconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4 2 7-6.5-4-6.5 4 2-7L2 9h7z" fill="currentColor" stroke="currentColor"/></svg>`;
+  } else if (isGoodCombo) {
+    // Good: shield with star
+    iconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 9l1 2h2l-1.5 1.2.6 2.3-1.7-1.3-1.7 1.3.6-2.3L9 11h2z" fill="currentColor" stroke="none"/></svg>`;
+  } else if (isHighTier) {
+    // Standard high tier: shield with check
+    iconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 12 15 17 10"/></svg>`;
+  } else if (letter === "C") {
+    iconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  } else if (letter === "D" || letter === "E" || letter === "F") {
+    iconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+  } else {
+    iconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  }
+
+  return { iconColor, bgColor, iconSvg };
+}
+
+function psuTierBadge(part: GenericPart): string {
+  const label = psuTierLabel(part);
+  if (!label) return "—";
+  const grade = psuTierGrade(part);
+  const efficiency = psuEfficiencyLevel(part);
+  const { iconSvg, iconColor, bgColor } = psuTierBadgeMeta(grade, efficiency);
+  return `<span data-psu-tier-badge data-psu-tier-bg="${bgColor}" class="inline-flex items-center gap-1.5 text-base-content"><span class="inline-flex items-center justify-center w-[1.125rem] h-[1.125rem] rounded-sm" style="background-color:${bgColor};color:${iconColor}">${iconSvg}</span><span>${escapeHtml(label)}</span></span>`;
 }
 
 function dimensionValue(part: GenericPart, keys: string[], unit = "") {

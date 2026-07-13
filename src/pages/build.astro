@@ -8,7 +8,7 @@ const numericFilterNames = new Set(view.numericFilters.map((filter) => filter.na
 const numericFilterHiddenInputs = view.hiddenInputs.filter((input) => !numericFilterNames.has(input.name as never));
 const sparseToggleHiddenInputs = view.hiddenInputs.filter((input) => input.name !== "show-sparse");
 const sparseRowsTooltip = "Rows without fitment-relevant data are hidden by default. Turn this on to include them.";
-const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active);
+const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active) || Boolean(view.state.caseVolumeTier) || Boolean(view.state.caseIntent);
 const hasAnySelection = view.slots.some((s) => s.id);
 const actionHeader = view.tableHeaders.find((header) => header.label === "Action");
 const dataTableHeaders = view.tableHeaders.filter((header) => header.label !== "Action");
@@ -39,6 +39,15 @@ if (totalPages <= 7) {
   }
   if (currentPage < totalPages - 2) pageItems.push({ type: "ellipsis" });
   pageItems.push({ type: "page", page: totalPages, url: buildUrl(view.state, { page: totalPages }) });
+}
+
+function isPsuBadge(value: string): boolean {
+  return value.includes("data-psu-tier-badge");
+}
+
+function psuBadgeBackground(value: string): string | undefined {
+  const match = value.match(/data-psu-tier-bg="([^"]+)"/);
+  return match?.[1];
 }
 ---
 
@@ -84,7 +93,7 @@ if (totalPages <= 7) {
           </div>
 
           <!-- Compact filter toolbar -->
-          <div class="flex items-center gap-3 px-6 py-2.5 border-b border-base-300 bg-base-200/60 flex-wrap" data-filter-sentinel>
+          <div class="flex items-center gap-3 px-6 py-2.5 border-b border-base-300 bg-base-200/60 flex-wrap">
             <!-- Search -->
             <form class="relative flex-shrink-0 w-[14rem]" method="GET" action={view.searchAction} data-autosubmit-form>
               <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-[0.85rem] h-[0.85rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -119,6 +128,24 @@ if (totalPages <= 7) {
                     >
                       <div class="filter-popover-header">{group.label}</div>
                       <div class="filter-popover-body">
+                        {group.options.length > 0 && (
+                          <div class="flex flex-col gap-1.5">
+                            <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">Case presets</span>
+                            <div class="flex flex-wrap gap-1.5">
+                              {group.options.map((option) => (
+                                <a
+                                  href={option.href}
+                                  class:list={["btn btn-xs font-mono inline-flex items-center gap-1", { "btn-primary": option.active, "btn-outline": !option.active }]}
+                                >
+                                  <span>{option.label}</span>
+                                  {option.tooltip && (
+                                    <span class="inline-grid w-3 h-3 place-items-center border border-current rounded-full text-[0.5rem] font-extrabold leading-none cursor-help" title={option.tooltip} aria-label={option.tooltip} tabindex="0">i</span>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {group.filters.map((filter) => (
                           <label class="flex flex-col gap-1" data-numeric-filter>
                             <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">{filter.label}</span>
@@ -135,11 +162,12 @@ if (totalPages <= 7) {
                             <div class="flex items-center gap-1">
                               <input
                                 type="number"
-                                name={filter.name}
+                                name={filter.active ? filter.name : undefined}
+                                data-filter-name={filter.name}
                                 min="0"
                                 max={filter.max}
                                 step={filter.step}
-                                value={filter.active ? filter.value : ""}
+                                value={filter.active || filter.derived ? filter.value : ""}
                                 placeholder={`${filter.max}`}
                                 class="input input-bordered input-xs w-20 text-right font-mono text-xs"
                                 aria-label={filter.label}
@@ -185,29 +213,37 @@ if (totalPages <= 7) {
           {view.tableNotice && <div class="mx-6 my-3 px-4 py-3 border border-base-300 rounded-btn bg-base-200 text-sm text-base-content/60">{view.tableNotice}</div>}
 
           <!-- Table area -->
-          <div class="flex flex-1 flex-col min-h-0">
+          <div class="flex flex-1 flex-col min-h-0 overflow-hidden">
             <div class="flex-1 overflow-auto">
 
               <!-- Mobile cards -->
               <div class="grid gap-3 p-4 lg:hidden">
                 {view.rows.map((row) => (
-                  <div class="card card-bordered bg-base-100">
-                    <div class:list={["flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200", { "border-t-2 border-t-primary": row.verdict === "pass", "border-t-2 border-t-warning": row.verdict === "conditional", "border-t-2 border-t-error": row.verdict === "fail" }]}>
-                      <span class:list={["badge badge-sm font-mono font-bold uppercase tracking-[0.04em]", { "badge-success": row.verdict === "pass", "badge-warning": row.verdict === "conditional", "badge-error": row.verdict === "fail", "badge-ghost": row.verdict === "unscored" }]} title={row.verdictTooltip}>{row.verdictLabel}</span>
+                  <div class:list={["card card-bordered bg-base-100", { "bg-success/[0.05] border-success/25": row.verdict === "pass", "bg-warning/[0.06] border-warning/30": row.verdict === "conditional", "bg-error/[0.06] border-error/30": row.verdict === "fail" }]}>
+                    <div class="flex items-center justify-end px-4 py-3 border-b border-base-300/70 bg-base-200/60">
                       <a class:list={["btn btn-xs", { "btn-primary": row.selected, "btn-ghost": !row.selected }]} href={row.actionUrl}>{row.actionLabel}</a>
                     </div>
                     <div class="flex flex-col gap-2 p-4">
-                      <h2 class="text-base font-semibold leading-tight">{row.title}</h2>
-                      <p class="text-sm text-base-content/60">{row.subtitle}</p>
+                      <h2 class="truncate text-base font-semibold leading-tight" title={row.title}>{row.title}</h2>
                       <div class="grid grid-cols-2 gap-2 py-1">
                         {row.mobileMetrics.map((m) => (
                           <div class:list={["flex flex-col p-2.5 border rounded-btn bg-base-200 font-mono", { "border-error/25 bg-error/[0.04]": m.alert }]}>
                             <span class:list={["text-[0.6rem] font-bold uppercase tracking-wider text-base-content/40", { "!text-error": m.alert }]}>{m.label}</span>
-                            <span class:list={["text-sm font-semibold", { "text-error font-bold": m.alert }]}>{m.value}</span>
+                            {isPsuBadge(m.value) ? (
+                              <span class:list={["text-sm font-semibold rounded-md px-1.5 py-0.5", { "text-error font-bold": m.alert }]} style={{ backgroundColor: psuBadgeBackground(m.value) }} set:html={m.value} />
+                            ) : (
+                              <span class:list={["text-sm font-semibold", { "text-error font-bold": m.alert }]}>{m.value}</span>
+                            )}
                           </div>
                         ))}
                       </div>
-                      {row.note && <p class="px-3 py-2 text-sm text-base-content/70 bg-base-200 rounded-btn leading-relaxed">{row.note}</p>}
+                      {row.note && (
+                        isPsuBadge(row.note) ? (
+                          <p class="px-3 py-2 text-sm text-base-content/70 bg-base-200 rounded-btn leading-relaxed" set:html={row.note} />
+                        ) : (
+                          <p class="px-3 py-2 text-sm text-base-content/70 bg-base-200 rounded-btn leading-relaxed">{row.note}</p>
+                        )
+                      )}
                     </div>
                   </div>
                 ))}
@@ -219,7 +255,7 @@ if (totalPages <= 7) {
                   <tr>
                     {actionHeader && <th class="action-column">{actionHeader.label}</th>}
                     {dataTableHeaders.map((header) => (
-                      <th aria-sort={header.sortable ? (header.sortDir === "asc" ? "ascending" : header.sortDir === "desc" ? "descending" : "none") : undefined}>
+                      <th class:list={{ "notes-column": header.key === "notes" }} aria-sort={header.sortable ? (header.sortDir === "asc" ? "ascending" : header.sortDir === "desc" ? "descending" : "none") : undefined}>
                         {header.sortable ? (
                           <span class="inline-flex items-center gap-1.5">
                             <a class:list={["inline-flex items-center gap-1 no-underline transition hover:text-primary", { "text-primary": header.sortDir }]} href={header.sortUrl}>
@@ -252,25 +288,23 @@ if (totalPages <= 7) {
                 {view.rows.length > 0 && (
                   <tbody>
                     {view.rows.map((row) => (
-                      <tr class:list={["data-row", { "data-row-selected": row.selected }]}>
+                      <tr class:list={[
+                        "data-row",
+                        `data-row-${row.verdict}`,
+                        { "data-row-selected": row.selected },
+                      ]}>
                         <td class="action-column whitespace-nowrap w-[1%]">
                           <a class:list={["btn btn-xs", { "btn-primary": row.selected, "btn-ghost": !row.selected }]} href={row.actionUrl}>{row.actionLabel}</a>
                         </td>
-                        <td class="whitespace-nowrap w-[1%]">
-                          <span class:list={["badge badge-sm font-mono font-bold uppercase tracking-[0.04em]", { "badge-success": row.verdict === "pass", "badge-warning": row.verdict === "conditional", "badge-error": row.verdict === "fail", "badge-ghost": row.verdict === "unscored" }]} title={row.verdictTooltip}>{row.verdictLabel}</span>
-                        </td>
                         <td>
-                          <div class="grid gap-0.5">
-                            <strong class="text-[0.95rem] font-semibold leading-snug">{row.title}</strong>
-                            <span class="text-xs text-base-content/50">{row.subtitle}</span>
-                          </div>
+                          <strong class="block max-w-[24rem] truncate text-[0.95rem] font-semibold leading-snug" title={row.title}>{row.title}</strong>
                         </td>
                         {row.cells.map((value, index) => (
-                          <td class:list={["font-mono text-sm whitespace-nowrap tabular-nums", { "bg-error/[0.06] !text-error font-bold": row.highlightCellIndex === index }]}>
-                            {value}
+                          <td class:list={["font-mono text-sm whitespace-nowrap tabular-nums", { "bg-error/[0.06] !text-error font-bold": row.highlightCellIndex === index }]} style={isPsuBadge(value) ? { backgroundColor: psuBadgeBackground(value) } : undefined}>
+                            {isPsuBadge(value) ? <Fragment set:html={value} /> : value}
                           </td>
                         ))}
-                        <td class="w-[min(18rem,25vw)] max-w-[22rem] text-sm text-base-content/60 leading-relaxed">{row.note}</td>
+                        <td class="notes-column text-sm text-base-content/60 leading-relaxed">{isPsuBadge(row.note) ? <Fragment set:html={row.note} /> : row.note}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -286,7 +320,7 @@ if (totalPages <= 7) {
             </div>
 
             <!-- Table footer / pagination -->
-            <footer class="flex items-center justify-between gap-4 px-6 py-3 border-t border-base-300 bg-base-100">
+            <footer class="flex flex-shrink-0 items-center justify-between gap-4 px-6 py-3 border-t border-base-300 bg-base-100">
               <span class="text-sm text-base-content/40">{view.displayStart}-{view.displayEnd} of {view.totalRows} rows</span>
               <div class="join">
                 <a
@@ -409,14 +443,24 @@ if (totalPages <= 7) {
                       </div>
 
                       <h2 class="text-base font-semibold leading-tight mt-2.5 mb-0.5">{slot.title}</h2>
-                      {slot.subtitle && <p class="text-sm text-base-content/60">{slot.subtitle}</p>}
+                      {slot.subtitle && (
+                        isPsuBadge(slot.subtitle) ? (
+                          <p class="text-sm text-base-content/60" set:html={slot.subtitle} />
+                        ) : (
+                          <p class="text-sm text-base-content/60">{slot.subtitle}</p>
+                        )
+                      )}
                       {slot.note && <p class="mt-2 p-2 bg-error/10 rounded-btn text-sm text-base-content/60">{slot.note}</p>}
                       {slot.specs.length > 0 && (
                         <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2.5 pt-2.5 border-t border-base-300">
                           {slot.specs.map((spec) => (
                             <div>
                               <dt class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.08em] text-base-content/60">{spec.label}</dt>
-                              <dd class="text-sm font-medium mt-0.5 leading-tight break-words">{spec.value}</dd>
+                              {isPsuBadge(spec.value) ? (
+                                <dd class="text-sm font-medium mt-0.5 leading-tight break-words" set:html={spec.value} />
+                              ) : (
+                                <dd class="text-sm font-medium mt-0.5 leading-tight break-words">{spec.value}</dd>
+                              )}
                             </div>
                           ))}
                         </dl>
@@ -449,133 +493,6 @@ if (totalPages <= 7) {
       </div>
     </div>
   </div>
-
-  <!-- Header filter bar (hidden until original filters scroll out of view) -->
-  <div class="hidden fixed top-16 left-0 right-0 z-40 bg-base-100 border-b border-base-300 shadow-sm lg:left-80 lg:w-[calc(100%-20rem)]" data-header-filters>
-    <div class="flex items-center gap-3 px-4 py-1.5 flex-wrap">
-      <div class="overflow-x-auto flex-shrink-0">
-        <div class="tabs tabs-lift tabs-sm min-w-max" role="tablist" aria-label="Part kinds">
-          {view.kindTabs.map((tab) => (
-            <a
-              class:list={[
-                "tab font-mono text-xs font-semibold uppercase tracking-[0.06em]",
-                { "tab-active": tab.active },
-              ]}
-              href={tab.href}
-              role="tab"
-              aria-selected={tab.active ? "true" : "false"}
-            >
-              {tab.kind}
-            </a>
-          ))}
-        </div>
-      </div>
-      <form class="relative flex-shrink-0 w-[14rem]" method="GET" action={view.searchAction} data-autosubmit-form>
-        <svg viewBox="0 0 24 24" aria-hidden="true" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-[0.85rem] h-[0.85rem] text-base-content/40 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="11" cy="11" r="6.5"></circle>
-          <path d="M16 16l5 5"></path>
-        </svg>
-        {view.hiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-        <input name="search" value={view.state.search} type="search" placeholder="Search models..." class="input input-bordered input-xs w-full pl-7 font-mono text-xs" data-autosubmit-input role="searchbox" aria-label="Search models" />
-      </form>
-
-      {view.numericFilterGroups.length > 0 && (
-        <form class="flex items-center gap-1.5 flex-wrap flex-shrink-0" method="GET" action={view.searchAction} data-numeric-filter-form>
-          {numericFilterHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-          {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
-          {view.numericFilterGroups.map((group) => (
-            <div class="relative" data-filter-chip-wrapper>
-              <button
-                type="button"
-                class:list={["filter-chip", { "filter-chip-active": group.activeCount > 0 }]}
-                data-filter-chip
-                aria-expanded="false"
-                aria-controls={`header-filter-popover-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
-              >
-                <span class="filter-chip-label">{group.label}</span>
-                <span class="filter-chip-value">{group.summary}</span>
-              </button>
-              <div
-                id={`header-filter-popover-${group.label.replace(/\s+/g, "-").toLowerCase()}`}
-                class="filter-popover"
-                data-filter-popover
-              >
-                <div class="filter-popover-header">{group.label}</div>
-                <div class="filter-popover-body">
-                  {group.filters.map((filter) => (
-                    <label class="flex flex-col gap-1" data-numeric-filter>
-                      <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">{filter.label}</span>
-                      <input
-                        class="range range-xs range-primary"
-                        type="range"
-                        min="0"
-                        max={filter.max}
-                        step={filter.step}
-                        value={filter.value}
-                        aria-label={`${filter.label} slider`}
-                        data-numeric-filter-range
-                      />
-                      <div class="flex items-center gap-1">
-                        <input
-                          type="number"
-                          name={filter.name}
-                          min="0"
-                          max={filter.max}
-                          step={filter.step}
-                          value={filter.active ? filter.value : ""}
-                          placeholder={`${filter.max}`}
-                          class="input input-bordered input-xs w-20 text-right font-mono text-xs"
-                          aria-label={filter.label}
-                          data-numeric-filter-number
-                        />
-                        <span class="font-mono text-[0.7rem] text-base-content/40">{filter.unit}</span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </form>
-      )}
-      <form method="GET" action={view.searchAction} class="flex items-center flex-shrink-0" data-sparse-toggle-form>
-        {sparseToggleHiddenInputs.map((input) => <input type="hidden" name={input.name} value={input.value} />)}
-        {view.state.search.trim() && <input type="hidden" name="search" value={view.state.search.trim()} />}
-        <label class:list={["flex items-center gap-1.5 px-1.5 py-1 border rounded-md cursor-pointer transition", { "border-primary bg-primary/5": view.state.showSparseRows, "border-base-300": !view.state.showSparseRows }] }>
-          <input
-            type="checkbox"
-            name="show-sparse"
-            value="1"
-            checked={view.state.showSparseRows}
-            class="toggle toggle-primary toggle-xs"
-            aria-label="Show sparse rows"
-            onchange="this.form?.requestSubmit()"
-          />
-          <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60 whitespace-nowrap">Sparse</span>
-          <span class="tooltip tooltip-top z-20" data-tip={sparseRowsTooltip}>
-            <span class="inline-grid w-3.5 h-3.5 place-items-center border border-base-content/20 rounded-full text-base-content/50 text-[0.58rem] font-extrabold leading-none cursor-help" aria-label={sparseRowsTooltip} tabindex="0">i</span>
-          </span>
-        </label>
-      </form>
-      {hasActiveNumericFilter && (
-        <a class="btn btn-link btn-xs font-mono font-semibold flex-shrink-0" href={view.clearFiltersUrl}>Clear</a>
-      )}
-    </div>
-  </div>
-
-  <script>
-    const sentinel = document.querySelector("[data-filter-sentinel]");
-    const headerBar = document.querySelector("[data-header-filters]");
-    if (sentinel && headerBar) {
-      const observer = new IntersectionObserver(
-        ([entry]) => {
-          headerBar.classList.toggle("hidden", entry.isIntersecting);
-        },
-        { rootMargin: "-5rem 0px 0px 0px" },
-      );
-      observer.observe(sentinel);
-    }
-  </script>
 
   <script src="../scripts/enhance-on-idle.ts"></script>
 </BaseLayout>

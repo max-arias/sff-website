@@ -353,7 +353,7 @@ function searchColumnsForTable(table: string): string {
     case "motherboards":
       return "id, 'motherboard' as kind, brand, name, cpu, chipset, socket, status";
     case "psus":
-      return "id, 'psu' as kind, brand, name, form_factor, wattage, status";
+      return "id, 'psu' as kind, brand, name, form_factor, psu_tier, psu_tier_efficiency, wattage, status";
     case "ram":
       return "id, 'ram' as kind, brand, model, memory_type, status";
     default:

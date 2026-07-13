@@ -2,11 +2,11 @@
 
 ## What This Website Is
 
-SFF PC Builder is a compatibility tool for small-form-factor PC builds. It helps people understand whether a graphics card and a compact PC case can physically work together before they buy parts, tear apart a build, or spend hours digging through forum posts.
+SFF PC Builder is a fitment engine for small-form-factor PC builds. It helps people understand whether a set of parts can physically work together before they buy parts, tear apart a build, or spend hours digging through forum posts.
 
-The site starts with a simple idea: in SFF builds, physical space is the real constraint. A part is not compatible just because the motherboard socket, PCIe generation, or PSU wattage looks reasonable. Millimeters matter. GPU length, width, thickness, bracket height, riser requirements, case layout, and incomplete manufacturer data can decide whether a build is possible.
+The site starts with a simple idea: in SFF builds, physical space is the real constraint. A part is not compatible just because the motherboard socket, PCIe generation, or PSU wattage looks reasonable. Millimeters matter. GPU length, width, thickness, bracket height, riser requirements, case layout, cooler clearance, RAM height, PSU form factor, and incomplete manufacturer data can decide whether a build is possible.
 
-The MVP focuses on cases and GPUs because that is the highest-friction dimensional conflict in most SFF builds.
+The Release Scope covers fitment between all major part categories: case↔GPU, cooler↔case, PSU↔case, motherboard↔case, RAM↔motherboard, and RAM↔cooler. The engine evaluates a full build configuration, not just case/GPU pairs.
 
 ## Who It Helps
 
@@ -47,64 +47,57 @@ The site should distinguish between:
 
 This is more useful than a simple compatible/incompatible badge because SFF builders often make informed tradeoffs. The product should give them the evidence, not make a vague promise.
 
-## MVP Scope
+## Release Scope
 
-The current MVP supports:
+The current release scope supports:
 
 - Importing every exported SFF Master List worksheet except the workbook index tab.
 - Normalizing dirty spreadsheet values into structured fields.
 - Preserving source hyperlinks for product, seller, and other linked sheet cells.
-- Searching across cases and GPUs with D1-backed autocomplete after 3 typed characters.
-- Starting from either a case or a GPU.
+- Searching across all part kinds with D1-backed autocomplete after 3 typed characters.
+- Starting from any part kind (case, GPU, PSU, cooler, motherboard, RAM).
+- Building a full multi-slot build configuration with fitment evaluation across all selected parts.
 - Selecting incompatible combinations intentionally.
 - Showing exact fit issues and warning messages.
-- Displaying clearance values for length, width, thickness, and PCIe slots.
+- Displaying clearance values for case, GPU, cooler, PSU, and motherboard dimensions.
 - Hiding rows with no fitment-relevant data from the default `/build` table while keeping them available through the URL-backed **Show sparse rows** toggle.
-- Storing production data in Cloudflare D1.
+- Storing production data in Cloudflare D1 across per-kind tables (`cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, `ram`).
 - Running locally against a seeded Cloudflare D1 database.
 
-Imported data is stored in one wide `sff_parts` table with a `kind` column. The current case/GPU compatibility experience is derived from that catalog.
+## Compatibility Rules
 
-## MVP Compatibility Rules
+The engine checks:
 
-The first engine checks:
-
-- GPU length against case GPU length.
-- GPU width against case GPU width.
-- GPU thickness against case GPU height/thickness.
-- GPU PCIe bracket slots against case PCIe slot support.
-- Low-profile-only case support.
-- Possible no-discrete-GPU/APU-only cases.
-- Sandwich layout warnings.
-- Riser requirement warnings.
-- Watercooled GPU warnings.
-- Power connector warnings in constrained PSU contexts.
-- Tight-fit warnings when clearance is very small.
+- GPU ↔ case: length, width, thickness, PCIe slot count, low-profile/APU-only, sandwich/riser warnings, watercooled GPU, power connectors, tight-fit warnings.
+- CPU cooler ↔ case: cooler height against case CPU cooler clearance.
+- PSU ↔ case: PSU form factor against case PSU support.
+- Motherboard ↔ case: motherboard form factor against case motherboard support.
+- RAM ↔ motherboard: RAM type compatibility.
+- RAM ↔ CPU cooler: RAM height against cooler RAM clearance.
 - Case status and availability warnings.
 
 These rules are intentionally conservative. The goal is to prevent false confidence.
 
 ## Out Of Scope For Now
 
-The MVP does not yet validate:
+The engine does not yet validate:
 
-- CPU cooler compatibility.
-- Motherboard compatibility.
-- PSU wattage or connector compatibility beyond warnings.
-- Thermal performance.
-- Radiator placement.
+- Thermal performance modeling.
+- Radiator placement within case layouts.
 - Fan, drive, and cable-routing tradeoffs.
 - Exact 12VHPWR bend radius.
 - Riser PCIe generation compatibility.
 - Saved builds or user accounts.
 - Affiliate routing.
-- Manual community overrides.
+- Manual community override entries.
+- Formal data/source attribution display in the UI (raw provenance is preserved in the pipeline; surfacing it visibly is a near-future goal).
 
-These are future layers once the case/GPU engine is trustworthy.
+These are future layers once the core fitment engine behavior is stable.
 
 ## Future Ideas
 
-- Community-intent filters: support saved, named filter bundles for common builder goals that show up repeatedly in forums and Reddit threads. For example, a `console-like SFF` filter could narrow the case table to living-room or console-style cases, then let users inspect which GPUs and other parts fit those cases. These should remain filter-and-explain tools, not ranked recommendations: failing and conditional rows should stay visible with evidence, and any subjective labels such as "console-like", "sandwich style", or "vertical footprint" should be treated as explicit, reviewable catalog attributes with provenance.
+- **Data Attribution**: Surface source attribution directly in the UI so every measurement, spec, and fitment claim is traceable to its origin (manufacturer spec sheet, community measurement, forum post, workbook cell). The import pipeline already preserves raw link and reference data; the next step is to expose it in the catalog table and build panel.
+- **Community-intent filters**: support saved, named filter bundles for common builder goals that show up repeatedly in forums and Reddit threads. For example, a `console-like SFF` filter could narrow the case table to living-room or console-style cases, then let users inspect which GPUs and other parts fit those cases. These should remain filter-and-explain tools, not ranked recommendations: failing and conditional rows should stay visible with evidence, and any subjective labels such as "console-like", "sandwich style", or "vertical footprint" should be treated as explicit, reviewable catalog attributes with provenance.
 - 3D-printable SFF case directory: start printable/open-source case projects as a separate informative directory rather than adding them directly to the `/build` fitment table. Only promote printable cases into the core case catalog after their dimensional constraints are manually verified. See [Future Feature: 3D-Printable SFF Case Directory](./docs/future-printable-cases.md).
 
 ## User Experience Direction

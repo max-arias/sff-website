@@ -15,7 +15,7 @@ Read these files before making product or UX changes:
 
 - The product is a **fitment engine**, not a generic component catalog or recommendation site.
 - The canonical stateful experience is intended to live at `/build`.
-- The root route `/` is intended to be a thin launcher into `/build`.
+- The root route `/` currently resolves to the builder experience; utility-first build workflow is the homepage for now.
 - URL query params are treated as a **public, human-readable, replayable contract**.
 
 ## Important Domain Rules
@@ -25,7 +25,7 @@ Read these files before making product or UX changes:
 - `conditional` covers uncertainty, incomplete data, and practical build risk.
 - The system is **non-blocking**: users can still select risky or failing parts.
 - Selected parts remain selected; issues should be surfaced, not auto-corrected away.
-- V1 uses **catalog-only selection** from `sff_parts.id`.
+- Release scope uses **catalog-only selection** from current catalog record IDs.
 
 ## UI Direction
 
@@ -36,14 +36,13 @@ Read these files before making product or UX changes:
 
 ## Current Reality Vs Intended Direction
 
-- Some current code may still reflect the older one-route homepage implementation.
+- Some current code may still reflect older launcher/homepage experiments.
 - When product docs and current UI code disagree, prefer the documented direction in `CONTEXT.md` and the ADR unless the user explicitly says otherwise.
 
 ## Data Notes
 
-- The main table is `sff_parts`.
-- Selected part identity should use the concrete `sff_parts.id`.
-- Those IDs are currently import-derived, so upstream sheet changes may affect long-term stability.
+- The catalog is stored in per-kind D1 tables: `cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, and `ram`.
+- Selected part identity should use concrete catalog record IDs from those tables.
 
 ## Local Development
 

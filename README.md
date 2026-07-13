@@ -1,6 +1,6 @@
 # SFF PC Builder
 
-Astro 7 + Tailwind CSS 4 for checking small-form-factor case and GPU dimensional compatibility. The current product shell is a single homepage route with light/dark themes, D1-backed search, and API routes that target Cloudflare Workers for both local development and deployment.
+Astro 7 + Tailwind CSS 4 fitment engine for small-form-factor PC builds. The stateful builder lives at `/build`; the root route rewrites to `/build` so the builder is the primary experience. The catalog is stored in per-kind D1 tables (`cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, `ram`) with URL-backed filters, search, and build state.
 
 For product intent, audience, and scope, see [PRODUCT.md](./PRODUCT.md).
 
@@ -18,15 +18,9 @@ The intake command fetches the public SFF Master List tabs, normalizes a broad g
 
 - `.data/intake-seed.sql`
 
-## Homepage Search
+## Search
 
-The homepage currently exposes one technical entry surface:
-
-- A global component search.
-- A case-first search input.
-- A GPU-first search input.
-
-All three autocomplete inputs query D1 after 3 typed characters, show a loading state while the request is in flight, and return richer labels so builders can distinguish actual SKUs instead of vague display names alone.
+The root route rewrites to `/build`, where a global autocomplete search is available. It queries D1 after 3 typed characters, shows a loading state while the request is in flight, and returns richer labels so builders can distinguish actual SKUs instead of vague display names alone.
 
 ## Build Table Filters
 
@@ -58,8 +52,8 @@ npm run cf:dev
 
 ## Data Model
 
-The importer stores the SFF Master List in one wide `sff_parts` table with a `kind` column, normalized fields for common filtering, and raw/link JSON for source provenance. The current case/GPU compatibility views are derived from the same table.
+The catalog is stored in per-kind D1 tables (`cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, `ram`), each with columns optimized for that part type. The monolithic `sff_parts` table from earlier versions has been replaced by this kind-specific schema.
 
 Rows with incomplete dimensions are imported and preserved. Rows that have enough fitment context to evaluate should surface uncertainty as warnings; rows with no fitment-relevant fields are hidden from `/build` by default but can be restored with `show-sparse=1`.
 
-For the v1 data direction, see [DATA_V1.md](./DATA_V1.md).
+For the data model details, see [DATA.md](./DATA.md).

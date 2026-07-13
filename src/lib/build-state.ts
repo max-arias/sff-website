@@ -17,9 +17,15 @@ export interface BuildQueryState {
   sort: string;
   dir: "asc" | "desc";
   showSparseRows: boolean;
+  caseVolumeTier: CaseVolumeTier | null;
+  caseIntent: CaseIntent | null;
   /** Generic numeric max filters keyed by query param name (e.g. "case-max-volume-l", "max-gpu-length-mm") */
   numericFilters: Record<string, number>;
 }
+
+export type CaseVolumeTier = "sub-10l" | "10l-20l" | "over-20l";
+
+export type CaseIntent = "steam-machine";
 
 export type BuildQueryPatch = Partial<{
   selectedIds: SelectedIds;
@@ -30,6 +36,8 @@ export type BuildQueryPatch = Partial<{
   sort: string;
   dir: "asc" | "desc";
   showSparseRows: boolean;
+  caseVolumeTier: CaseVolumeTier | null;
+  caseIntent: CaseIntent | null;
   numericFilters: Record<string, number>;
   resetPage: boolean;
 }>;
@@ -206,6 +214,8 @@ export function parseBuildQuery(url: URL): BuildQueryState {
             ? "desc"
             : "asc",
     showSparseRows: url.searchParams.get("show-sparse") === "1",
+    caseVolumeTier: sanitizeCaseVolumeTier(url.searchParams.get("case-volume")),
+    caseIntent: sanitizeCaseIntent(url.searchParams.get("case-intent")),
     numericFilters: parseNumericFilters(url),
   };
 }
@@ -220,6 +230,12 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
   const sort = patch.sort ?? state.sort;
   const dir = patch.dir ?? state.dir;
   const showSparseRows = patch.showSparseRows ?? state.showSparseRows;
+  const caseVolumeTier =
+    patch.caseVolumeTier !== undefined
+      ? patch.caseVolumeTier
+      : state.caseVolumeTier;
+  const caseIntent =
+    patch.caseIntent !== undefined ? patch.caseIntent : state.caseIntent;
   const numericFilters =
     patch.numericFilters !== undefined
       ? patch.numericFilters
@@ -240,6 +256,8 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
     if (dir === "desc") params.set("dir", dir);
   }
   if (showSparseRows) params.set("show-sparse", "1");
+  if (kind === "case" && caseVolumeTier) params.set("case-volume", caseVolumeTier);
+  if (kind === "case" && caseIntent) params.set("case-intent", caseIntent);
   for (const [paramName, value] of Object.entries(numericFilters)) {
     if (value !== null && value !== undefined) {
       params.set(paramName, formatQueryNumber(value));
@@ -255,6 +273,16 @@ function sanitizePositiveNumber(value: string | null) {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function sanitizeCaseVolumeTier(value: string | null): CaseVolumeTier | null {
+  return value === "sub-10l" || value === "10l-20l" || value === "over-20l"
+    ? value
+    : null;
+}
+
+function sanitizeCaseIntent(value: string | null): CaseIntent | null {
+  return value === "steam-machine" ? value : null;
 }
 
 function formatQueryNumber(value: number) {
@@ -278,5 +306,5 @@ export function sanitizeKind(value: string | null): SelectableKind | null {
 export function inferKind(ids: SelectedIds): SelectableKind {
   if (ids.case && !ids.gpu) return "gpu";
   if (ids.gpu && !ids.case) return "case";
-  return "gpu";
+  return "case";
 }

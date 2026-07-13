@@ -45,6 +45,19 @@ export interface GenericPart {
   links: Record<string, string>;
 }
 
+export interface PsuTierOverride {
+  /** The part id (slug) of the PSU GenericPart that could not be matched deterministically. */
+  partId: string;
+  /** The rowId of the PsuTierEntry selected by Gemini (or manual override). */
+  rowId: string;
+  /** Human-readable explanation from the matching agent. */
+  reason: string;
+  /** Confidence score (0-1) from the matching agent. Only used when >= confidenceThreshold. */
+  confidence: number;
+  /** ISO timestamp of when this override was created. */
+  matchedAt: string;
+}
+
 export interface PsuTierEntry {
   sourceSheet: string;
   rowNumber: number;

@@ -1,4 +1,4 @@
-import type { CasePart, GenericPart, GpuPart, IntakeResult } from "../types";
+import type { CasePart, GenericPart, GpuPart, IntakeResult, PsuTierEntry, PsuTierOverride } from "../types";
 import { normalizePsuMatchKey } from "./psu-tier-list";
 import { uniqueSlug } from "./slug";
 
@@ -44,7 +44,7 @@ function psuPartMatchKeys(part: GenericPart) {
   return [...names].map(normalizePsuMatchKey).filter(Boolean);
 }
 
-function psuTierByMatchKey(result: IntakeResult) {
+export function psuTierByMatchKey(result: IntakeResult) {
   const index = new Map<string, IntakeResult["psuTierEntries"][number] | null>();
 
   result.psuTierEntries.forEach((entry) => {
@@ -61,7 +61,7 @@ function psuTierByMatchKey(result: IntakeResult) {
   return index;
 }
 
-function psuTierForPart(
+export function psuTierForPart(
   part: GenericPart,
   tierIndex: Map<string, IntakeResult["psuTierEntries"][number] | null>
 ) {
@@ -579,13 +579,24 @@ export function psuInsert(
   runId: string,
   slug: string,
   part: GenericPart,
-  tierIndex: Map<string, IntakeResult["psuTierEntries"][number] | null>
+  tierIndex: Map<string, IntakeResult["psuTierEntries"][number] | null>,
+  overrideMap?: Map<string, PsuTierEntry>
 ) {
+  const overrideEntry = overrideMap?.get(part.id);
+  const matched = overrideEntry ?? psuTierForPart(part, tierIndex);
+  // Text tier columns must be non-null to match schema defaults; nullable rank is fine as null
+  const tier = matched?.tier ?? "";
+  const tierRank = matched?.tierRank ?? null;
+  const tierEfficiency = matched?.efficiency ?? "";
+
   return `insert into psus (${[
     "id",
     "brand",
     "name",
     "form_factor",
+    "psu_tier",
+    "psu_tier_rank",
+    "psu_tier_efficiency",
     "wattage",
     "ac_input_voltage_v",
     "atx_3_compatible",
@@ -619,6 +630,9 @@ export function psuInsert(
     escapeSql(part.brand),
     escapeSql(part.name),
     escapeSql(spec(part, ["form_factor", "psu"])),
+    escapeSql(tier),
+    escapeSql(tierRank),
+    escapeSql(tierEfficiency),
     escapeSql(dim(part, ["wattage", "watt", "watts"])),
     escapeSql(dim(part, ["ac_input_voltage_v", "ac_input_voltage"])),
     bool(spec(part, ["atx_3_compatible"]) === "Y"),
@@ -675,14 +689,36 @@ export function ramInsert(runId: string, slug: string, part: GenericPart) {
 }
 
 // ---------------------------------------------------------------------------
+// Override support
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a map from PSU part id to tier entry using override declarations.
+ * Overrides from Gemini (or manual) are injected into the match pipeline.
+ */
+export function buildOverrideMap(
+  overrides: PsuTierOverride[] | undefined,
+  tierEntries: PsuTierEntry[],
+): Map<string, PsuTierEntry> {
+  const map = new Map<string, PsuTierEntry>();
+  if (!overrides || !tierEntries.length) return map;
+  for (const override of overrides) {
+    const entry = tierEntries.find((e) => e.rowId === override.rowId);
+    if (entry) map.set(override.partId, entry);
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 // Seed SQL builder
 // ---------------------------------------------------------------------------
 
-export function buildSeedSql(result: IntakeResult) {
+export function buildSeedSql(result: IntakeResult, overrides?: PsuTierOverride[]) {
   const runId = `import-${result.generatedAt.replace(/[^0-9a-z]/gi, "-").toLowerCase()}`;
   const casesBySourceRow = new Map(result.cases.map((part) => [`${part.sourceSheet}:${part.rowNumber}`, part]));
   const gpusBySourceRow = new Map(result.gpus.map((part) => [`${part.sourceSheet}:${part.rowNumber}`, part]));
   const tierIndex = psuTierByMatchKey(result);
+  const overrideMap = buildOverrideMap(overrides, result.psuTierEntries);
 
   // Global slug uniqueness tracking
   const allSlugs = new Set<string>();
@@ -722,7 +758,7 @@ export function buildSeedSql(result: IntakeResult) {
         lines.push(motherboardInsert(runId, slug, part));
         break;
       case "psu":
-        lines.push(psuInsert(runId, slug, part, tierIndex));
+        lines.push(psuInsert(runId, slug, part, tierIndex, overrideMap));
         break;
       case "ram":
         lines.push(ramInsert(runId, slug, part));

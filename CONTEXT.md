@@ -65,12 +65,8 @@ The v1 rule that selected build parts must come from catalog records already pre
 _Avoid_: Manual shadow part, user-defined temporary part
 
 **Catalog Record ID**:
-The concrete `sff_parts.id` value used to identify a selected part in URL state and build selection.
+The concrete catalog record ID used to identify a selected part in URL state and build selection.
 _Avoid_: Abstract family ID, SQLite rowid
-
-**Import-Derived Identity**:
-The accepted v1 rule that `Catalog Record ID` values are generated from imported source attributes, including source row position, even though that may drift if the upstream sheets are reorganized.
-_Avoid_: Assumed permanent identity, hidden ID fragility
 
 **Kind-Slot Equivalence**:
 The v1 rule that the active table `kind` and the destination **Role Slot** are the same thing.
@@ -140,17 +136,9 @@ _Avoid_: Internal-only param naming, disposable URL shape
 The dedicated route `/build` that hosts the stateful fitment experience and its shareable query state.
 _Avoid_: Homepage-only tool route, ambiguous entry path
 
-**Launcher Homepage**:
-The root route `/`, whose job is to introduce the product briefly and send users into the stateful build experience on `/build`.
-_Avoid_: Permanent app surface, mixed entry-and-app route
-
-**Launcher Handoff State**:
-The prefilled URL state added by the launcher when sending a user to `/build`, such as a selected part or a target slot filter.
-_Avoid_: Empty redirect, hidden transition state
-
-**Resolved Launcher Selection**:
-A launcher autocomplete result the user explicitly chose, which should become a concrete selected part in the matching **Role Slot** on `/build`.
-_Avoid_: Repeated confirmation search, loose text-only handoff
+**Root Route**:
+The root route `/` which rewrites to `/build`, making the builder the primary experience. The root may be revisited as a thin landing page in the future if needed.
+_Avoid_: Separate homepage app surface
 
 **Filter Table View**:
 The primary `/build` interface: a data table of candidate parts controlled by URL-backed filters, selected slots, search, and sort state.
@@ -161,7 +149,7 @@ The URL-backed control that sets which part kind the main candidate table is cur
 _Avoid_: Mixed-kind table, hidden mode switch
 
 **Kind Defaulting Rule**:
-The rule that the initial `Table Kind Filter` may be inferred from launcher handoff or current build state, but any explicit user change becomes the active URL-backed choice.
+The rule that the initial `Table Kind Filter` may be inferred from the current build state, but any explicit user change becomes the active URL-backed choice.
 _Avoid_: Constant auto-snapping, ignored user selection
 
 **Selected Build Panel**:
@@ -284,9 +272,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - **URL Build State** should remain a **Stable Query State**
 - **URL Build State** is a **Public Query Contract**
 - The stateful fitment experience lives on the **Canonical Build Route** at `/build`
-- The homepage is a **Launcher Homepage** that hands users off to the **Canonical Build Route**
-- The **Launcher Homepage** sends users to `/build` with **Launcher Handoff State** rather than a hidden in-memory transition
-- A **Resolved Launcher Selection** should preselect the corresponding **Role Slot** on `/build`
+- The root route `/` rewrites to `/build`, keeping the builder as the primary experience. A thin landing page may be revisited later if needed.
 - The primary `/build` surface is a **Filter Table View** powered by URL state
 - The main candidate table is scoped by a **Table Kind Filter**
 - The **Table Kind Filter** follows the **Kind Defaulting Rule**
@@ -317,7 +303,6 @@ _Avoid_: Dead filter params, misleading stale URL state
 - Kind changes follow **Kind Filter Cleanup**
 - V1 build selection follows **Catalog-Only Selection**
 - Selected slots should store a **Catalog Record ID**
-- V1 currently accepts **Import-Derived Identity** for selected part IDs
 - V1 uses **Kind-Slot Equivalence**
 - The **Selected Build Panel** should use **Fixed Slot Order**
 - The **Selected Build Panel** should show **Visible Empty Slots**
@@ -356,10 +341,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 > **Domain expert:** "No. V1 uses **Catalog-Only Selection** so chosen build parts come from existing catalog records."
 
 > **Dev:** "What exact identifier should a selected slot store in the URL?"
-> **Domain expert:** "Use the concrete **Catalog Record ID** from `sff_parts.id`, not an abstract family identifier or database rowid."
-
-> **Dev:** "Are those selected part IDs guaranteed to survive upstream sheet reordering forever?"
-> **Domain expert:** "No. V1 accepts **Import-Derived Identity**. The IDs are good enough for now, but long-term permanent identity is a future data-model problem."
+> **Domain expert:** "Use the concrete **Catalog Record ID**, not an abstract family identifier or database rowid."
 
 > **Dev:** "When the table is on `gpu`, what slot does row selection write into?"
 > **Domain expert:** "Use **Kind-Slot Equivalence**. In v1, the table kind and the destination slot are the same."
@@ -412,14 +394,8 @@ _Avoid_: Dead filter params, misleading stale URL state
 > **Dev:** "Where does the real build experience live?"
 > **Domain expert:** "On the **Canonical Build Route** at `/build`, where the full shareable fitment state belongs."
 
-> **Dev:** "What is the homepage for once `/build` exists?"
-> **Domain expert:** "The root route is a **Launcher Homepage**. It should orient the user and send them into `/build`, not carry the full app itself."
-
-> **Dev:** "How should the launcher send users into the build route?"
-> **Domain expert:** "Use **Launcher Handoff State** in the URL. Searching a part can preselect it, and actions like 'start from a case' should prefill the relevant slot or type filter."
-
-> **Dev:** "What happens when the launcher autocomplete is used to pick a specific valid part?"
-> **Domain expert:** "Treat it as a **Resolved Launcher Selection** and preselect that part in the matching **Role Slot** on `/build`."
+> **Dev:** "What does the root route `/` do?"
+> **Domain expert:** "It rewrites to `/build`, so the builder experience is the primary entry point. A thin landing page may be revisited later if it makes sense."
 
 > **Dev:** "Is `/build` mainly a single active-slot picker?"
 > **Domain expert:** "No. The primary interface is a **Filter Table View** powered by URL state, with build selections and filters shaping the candidate table."
@@ -523,9 +499,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - "shareable state" could have become opaque; resolved: URL parameters remain **Stable Query State**.
 - "query params" could have been treated as internal details; resolved: the URL shape is a **Public Query Contract**.
 - "the homepage" could have become the permanent stateful app surface; resolved: the canonical fitment experience lives at the **Canonical Build Route** `/build`.
-- "current code shape" conflicted with the intended product model; resolved: `/build` becomes the real app, and `/` becomes a **Launcher Homepage**.
-- "launcher navigation" could have relied on hidden app state; resolved: `/` hands off to `/build` via explicit **Launcher Handoff State** in the URL.
-- "launcher search" could have stayed ambiguous after selection; resolved: a **Resolved Launcher Selection** becomes a concrete slot selection on `/build`.
+- "current code shape" conflicted with the intended product model; resolved: `/build` is the real app, and `/` rewrites to it.
 - "next-part UI" could have implied a slot-by-slot wizard; resolved: `/build` is a **Filter Table View** driven by URL state.
 - "table scope" could have mixed multiple part kinds at once; resolved: the main table is controlled by a **Table Kind Filter**.
 - "smart defaults" could have overridden the user repeatedly; resolved: the **Kind Defaulting Rule** allows inferred first load defaults, then respects explicit user choice.
@@ -554,8 +528,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - "page state" could have survived incompatible result changes; resolved: result-shaping changes follow the **Page Reset Rule**.
 - "kind switches" could have left dead filter params behind; resolved: use **Kind Filter Cleanup** for kind-specific URL filters.
 - "custom parts" could have introduced a second selection model in v1; resolved: use **Catalog-Only Selection**.
-- "part identity" could have drifted toward abstract family IDs; resolved: selected slots store the concrete **Catalog Record ID** from `sff_parts.id`.
-- "URL identity stability" could have been overstated; resolved: v1 accepts **Import-Derived Identity** and its limitations.
+- "part identity" could have drifted toward abstract family IDs; resolved: selected slots store the concrete **Catalog Record ID**.
 - "row selection target" could have required a second control; resolved: v1 uses **Kind-Slot Equivalence**.
 - "panel order" could have drifted with interaction history; resolved: the **Selected Build Panel** uses **Fixed Slot Order**.
 - "empty slots" could have vanished from the panel; resolved: the **Selected Build Panel** shows **Visible Empty Slots**.
