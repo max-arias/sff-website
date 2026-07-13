@@ -29,16 +29,17 @@ Current architecture state:
 - `getBuildView` accepts a `CatalogStore`; tests can use `InMemoryCatalogStore`.
 - URL serialization is centralized in `buildSearchParams` / `buildUrl`.
 - Numeric filter params/groups are centralized in `src/lib/build-filter-params.ts`.
+- Cell-level fitment evidence metadata replaced row-level `highlightCellIndex`; `src/fitment/` exposes UI-agnostic metric keys only.
+- Focused TypeScript suites run with `npm run test`.
 
 Before changing code, run or inspect:
 - `git status --short`
 - `git log --oneline -8`
 
 Recommended next work, in priority order:
-1. Run a code review of the refactor series (`308c88a..HEAD` or the four cleanup commits) for standards and product-spec alignment.
-2. Design the next seam for Column-Level Evidence Highlight: move from row-level `highlightCellIndex` toward cell-level evidence metadata in the table view model, while keeping the Fitment Engine UI-agnostic.
-3. Consider Constraint Jumps / Open Constraints, but treat this as product-facing UI work and preserve the public URL query contract.
-4. Consider Provenance / raw source visibility, but expect it to touch intake, D1, types, and UI.
+1. Design Constraint Jumps / Open Constraints, but treat this as product-facing UI work and preserve the public URL query contract.
+2. Consider Provenance / raw source visibility, but expect it to touch intake, D1, types, and UI.
+3. Continue shrinking `src/server/build-view.ts` through small, tested seams such as row/view-model building, filter-option building, PSU badge rendering, or issue aggregation.
 
 Use the `codebase-design` skill before designing a new module/interface seam. Use `simplify` for behavior-preserving cleanups. Use `code-review` if reviewing the refactor commits. Do not start the Astro dev server unless explicitly asked.
 
@@ -49,11 +50,6 @@ Always preserve these product rules:
 - Fitment is non-blocking; selected risky/failing parts stay selected and issues are surfaced.
 
 Verification commands used recently:
-- `npm run test:build-filter-params`
-- `npm run test:build-state`
-- `npm run test:build-view`
-- `npm run test:fitment`
-- `npm run test:generic-part`
-- `npm run test:search`
+- `npm run test`
 - `npm run typecheck`
 ```

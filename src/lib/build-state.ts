@@ -88,6 +88,21 @@ export const selectableKinds = new Set<SelectableKind>(
 
 import { NUMERIC_FILTER_PARAM_NAMES as numericFilterParamNames } from "./build-filter-params";
 
+const numericFilterParamPrefixesByKind: Record<SelectableKind, string[]> = {
+  case: ["case-max-"],
+  gpu: ["max-gpu-"],
+  "cpu-cooler": ["cooler-max-"],
+  psu: ["psu-max-"],
+  motherboard: ["mobo-max-"],
+  ram: ["ram-max-"],
+};
+
+function numericFilterAppliesToKind(paramName: string, kind: SelectableKind) {
+  return numericFilterParamPrefixesByKind[kind].some((prefix) =>
+    paramName.startsWith(prefix),
+  );
+}
+
 function parseNumericFilters(url: URL): Record<string, number> {
   const filters: Record<string, number> = {};
   for (const name of numericFilterParamNames) {
@@ -193,7 +208,12 @@ export function buildSearchParams(
     for (const feature of psuFeatures) params.append("psu-feature", feature);
   }
   for (const [paramName, value] of Object.entries(numericFilters)) {
-    if (value !== null && value !== undefined) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      numericFilterParamNames.includes(paramName as any) &&
+      numericFilterAppliesToKind(paramName, kind)
+    ) {
       params.set(paramName, formatQueryNumber(value));
     }
   }

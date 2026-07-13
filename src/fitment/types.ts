@@ -4,7 +4,17 @@ import type { CasePart, GenericPart, GpuPart } from "../types";
 // Domain types for the fitment engine (pure, no UI concerns)
 // ---------------------------------------------------------------------------
 
-export type FitmentVerdict = "pass" | "conditional" | "fail" | "unscored";
+/**
+ * FitmentVerdict for individual evidence items.
+ * Never "unscored" — each piece of evidence always has a concrete evaluation.
+ */
+export type FitmentVerdict = "pass" | "conditional" | "fail";
+
+/**
+ * Verdict for a decision or report, which may also be "unscored"
+ * when there is no evidence at all.
+ */
+export type FitmentDecisionVerdict = FitmentVerdict | "unscored";
 
 export interface FitmentEvidence {
   code: string;
@@ -12,14 +22,14 @@ export interface FitmentEvidence {
   message: string;
   /** Part-kind slots this evidence applies to (e.g. ["gpu", "case"]). */
   slots?: string[];
-  /** Optional metric key for highlighting (e.g. "gpuLengthMm"). */
+  /** Optional domain metric key for the dimension/spec this evidence evaluates. */
   metric?: string;
   /** True when this evidence is an advisory/note, not a hard issue. */
   advisory?: boolean;
 }
 
 export interface FitmentDecision {
-  verdict: FitmentVerdict;
+  verdict: FitmentDecisionVerdict;
   evidence: FitmentEvidence[];
 }
 
@@ -33,7 +43,7 @@ export interface BuildContext {
 }
 
 export interface BuildFitmentReport {
-  verdict: FitmentVerdict;
+  verdict: FitmentDecisionVerdict;
   slotDecisions: Record<string, FitmentDecision>;
   overallEvidence: FitmentEvidence[];
 }

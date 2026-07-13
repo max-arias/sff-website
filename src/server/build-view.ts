@@ -38,11 +38,19 @@ import {
 type PartRecord = GenericPart | CasePart | GpuPart;
 type DisplayVerdict = FitVerdict | "unscored";
 type BuildStatus = FitVerdict | "in-progress";
+
+export interface BuildViewCell {
+  value: string;
+  evidenceVerdict: "conditional" | "fail" | null;
+  evidenceMessages: string[];
+}
+
 type FitmentSummary = {
   verdict: DisplayVerdict;
   messages: string[];
   notes: string[];
-  highlightCellIndex: number | null;
+  /** Evidence items that may map to table cells (those with a metric key). */
+  cellEvidence: FitmentEvidence[];
 };
 type SlotSpec = {
   label: string;
@@ -71,7 +79,7 @@ export interface BuildViewRow {
   kind: SelectableKind;
   title: string;
   subtitle: string;
-  cells: string[];
+  cells: BuildViewCell[];
   verdict: DisplayVerdict;
   verdictLabel: string;
   verdictTooltip: string;
@@ -80,7 +88,6 @@ export interface BuildViewRow {
   actionLabel: string;
   actionTone: "add" | "remove" | "swap";
   actionUrl: string;
-  highlightCellIndex: number | null;
   releaseYear: number | null;
   availabilityRank: number;
   mobileMetrics: Array<{ label: string; value: string; alert: boolean }>;
@@ -175,6 +182,8 @@ interface MetricColumnDef {
   label: string;
   getValue: (part: PartRecord) => string;
   numericFilter?: NumericFilterDef;
+  /** Engine metric keys that map to this column for cell-level evidence highlighting. */
+  evidenceMetrics?: string[];
 }
 
 function cVal<R>(part: PartRecord, fn: (c: CasePart) => R, fallback: R): R {
@@ -284,6 +293,7 @@ const CASE_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => cVal(p, (c) => c.dimensions.cpuCoolerHeightMm, null),
     },
+    evidenceMetrics: ["coolerHeight"],
   },
   {
     key: "gpu-length",
@@ -295,12 +305,14 @@ const CASE_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => cVal(p, (c) => c.dimensions.gpuLengthMm, null),
     },
+    evidenceMetrics: ["gpuLengthMm"],
   },
   {
     key: "gpu-width",
     label: "GPU max W",
     getValue: (p) =>
       cVal(p, (c) => formatValue(c.dimensions.gpuWidthMm, "mm"), "—"),
+    evidenceMetrics: ["gpuWidthMm"],
   },
   {
     key: "gpu-thickness",
@@ -312,6 +324,7 @@ const CASE_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => cVal(p, (c) => c.dimensions.gpuThicknessMm, null),
     },
+    evidenceMetrics: ["gpuThicknessMm"],
   },
   {
     key: "pcie-slots",
@@ -322,6 +335,7 @@ const CASE_COLUMNS: MetricColumnDef[] = [
       unit: "slots",
       rawValue: (p) => cVal(p, (c) => c.dimensions.pcieSlots, null),
     },
+    evidenceMetrics: ["pcieSlots"],
   },
   {
     key: "lp-pcie-slots",
@@ -342,11 +356,13 @@ const CASE_COLUMNS: MetricColumnDef[] = [
     key: "motherboard",
     label: "Motherboard",
     getValue: (p) => cVal(p, (c) => emptyToDash(c.motherboard), "—"),
+    evidenceMetrics: ["motherboardFormFactor"],
   },
   {
     key: "psu",
     label: "PSU",
     getValue: (p) => cVal(p, (c) => emptyToDash(c.psu), "—"),
+    evidenceMetrics: ["psuFormFactor"],
   },
   {
     key: "radiator",
@@ -553,6 +569,7 @@ const GPU_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => gVal(p, (g) => g.dimensions.lengthMm, null),
     },
+    evidenceMetrics: ["gpuLengthMm"],
   },
   {
     key: "width",
@@ -564,6 +581,7 @@ const GPU_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => gVal(p, (g) => g.dimensions.widthMm, null),
     },
+    evidenceMetrics: ["gpuWidthMm"],
   },
   {
     key: "thickness",
@@ -575,6 +593,7 @@ const GPU_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => gVal(p, (g) => g.dimensions.thicknessMm, null),
     },
+    evidenceMetrics: ["gpuThicknessMm"],
   },
   {
     key: "slots",
@@ -585,6 +604,7 @@ const GPU_COLUMNS: MetricColumnDef[] = [
       unit: "slots",
       rawValue: (p) => gVal(p, (g) => g.dimensions.pcieSlots, null),
     },
+    evidenceMetrics: ["pcieSlots"],
   },
   {
     key: "boost-clock",
@@ -666,6 +686,7 @@ const GPU_COLUMNS: MetricColumnDef[] = [
     key: "low-profile",
     label: "Low profile",
     getValue: (p) => gVal(p, (g) => (g.lowProfile ? "Yes" : "—"), "—"),
+    evidenceMetrics: ["pcieSlots"],
   },
   {
     key: "watercooled",
@@ -735,6 +756,7 @@ const COOLER_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => genericNum(p, ["height", "height_mm", "cooler_height"]),
     },
+    evidenceMetrics: ["coolerHeight"],
   },
   {
     key: "footprint",
@@ -978,6 +1000,7 @@ const COOLER_COLUMNS: MetricColumnDef[] = [
       unit: "mm",
       rawValue: (p) => genericNum(p, ["ram_clearance", "ram_clearance_mm"]),
     },
+    evidenceMetrics: ["ramHeight"],
   },
   {
     key: "review-by-aris",
@@ -1001,6 +1024,7 @@ const PSU_COLUMNS: MetricColumnDef[] = [
     key: "form-factor",
     label: "Form factor",
     getValue: (p) => genericSpec(p, ["form_factor", "psu"]),
+    evidenceMetrics: ["psuFormFactor"],
   },
   {
     key: "wattage",
@@ -1177,6 +1201,7 @@ const MOTHERBOARD_COLUMNS: MetricColumnDef[] = [
     key: "form-factor",
     label: "Form factor",
     getValue: (p) => (isGenericPart(p) ? motherboardFormFactor(p) : "—"),
+    evidenceMetrics: ["motherboardFormFactor"],
   },
   {
     key: "socket",
@@ -1298,6 +1323,7 @@ const MOTHERBOARD_COLUMNS: MetricColumnDef[] = [
     key: "ram-type",
     label: "RAM type",
     getValue: (p) => genericSpec(p, ["ram_type"]),
+    evidenceMetrics: ["ramType"],
   },
   {
     key: "ram-slots",
@@ -1651,6 +1677,7 @@ const RAM_COLUMNS: MetricColumnDef[] = [
     key: "type",
     label: "Type",
     getValue: (p) => genericSpec(p, ["memory_type"]),
+    evidenceMetrics: ["ramType"],
   },
   {
     key: "height",
@@ -1663,6 +1690,7 @@ const RAM_COLUMNS: MetricColumnDef[] = [
       rawValue: (p) =>
         genericNum(p, ["height", "height_mm", "height_incl_contact_pins"]),
     },
+    evidenceMetrics: ["ramHeight"],
   },
   { key: "rgb", label: "RGB", getValue: (p) => genericYesNo(p, ["rgb"]) },
 ];
@@ -2159,13 +2187,43 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
   };
 }
 
+function buildViewCells(
+  part: PartRecord,
+  cellEvidence: FitmentEvidence[],
+): BuildViewCell[] {
+  const defs = metricColumnsFor(part.kind as SelectableKind);
+  return defs.map((def) => {
+    const value = def.getValue(part);
+
+    // Find evidence items whose metric matches this column
+    const matchingEvidence = def.evidenceMetrics
+      ? cellEvidence.filter((e) => def.evidenceMetrics!.includes(e.metric!))
+      : [];
+
+    // Determine worst verdict across matching evidence
+    let evidenceVerdict: "conditional" | "fail" | null = null;
+    const evidenceMessages: string[] = [];
+    for (const e of matchingEvidence) {
+      if (e.verdict === "fail") {
+        evidenceVerdict = "fail";
+        evidenceMessages.push(e.message);
+      } else if (e.verdict === "conditional" && evidenceVerdict !== "fail") {
+        evidenceVerdict = "conditional";
+        evidenceMessages.push(e.message);
+      }
+    }
+
+    return { value, evidenceVerdict, evidenceMessages };
+  });
+}
+
 function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
   const kind = part.kind as SelectableKind;
   const selected = ctx.state.selectedIds[kind] === part.id;
   const hasSelection = Boolean(ctx.state.selectedIds[kind]);
   const fitment = evaluateCandidateFitment(ctx, part);
   const note = fitment.messages[0] || fitment.notes[0] || fallbackNote(part);
-  const cells = metricCells(part);
+  const cells = buildViewCells(part, fitment.cellEvidence);
   const metricLabels = tableHeaderLabels(ctx.state.kind).slice(1, -2);
 
   return {
@@ -2176,8 +2234,8 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     cells,
     mobileMetrics: metricLabels.map((label, i) => ({
       label,
-      value: cells[i] ?? "",
-      alert: fitment.highlightCellIndex === i,
+      value: cells[i]?.value ?? "",
+      alert: cells[i]?.evidenceVerdict !== null,
     })),
     verdict: fitment.verdict,
     verdictLabel: verdictLabel(fitment.verdict),
@@ -2193,7 +2251,6 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
           search: "",
           resetPage: true,
         }),
-    highlightCellIndex: fitment.highlightCellIndex,
     releaseYear: partReleaseYear(part),
     availabilityRank: part.availabilityStatus === "unavailable" ? 1 : 0,
   };
@@ -2216,7 +2273,7 @@ function rowSort(a: BuildViewRow, b: BuildViewRow, state: BuildQueryState) {
   const verdictDelta = verdictRank(a.verdict) - verdictRank(b.verdict);
   if (verdictDelta !== 0) return verdictDelta;
   if (state.kind === "psu") {
-    const tierDelta = psuTierRank(a.cells[0]) - psuTierRank(b.cells[0]);
+    const tierDelta = psuTierRank(a.cells[0].value) - psuTierRank(b.cells[0].value);
     if (tierDelta !== 0) return tierDelta;
   }
   if (a.selected !== b.selected) return a.selected ? -1 : 1;
@@ -2231,7 +2288,7 @@ function sortValue(row: BuildViewRow, key: string, state: BuildQueryState) {
   const metricMatch = key.match(/^metric-(\d+)$/);
   if (metricMatch) {
     const metricIndex = Number(metricMatch[1]);
-    const value = row.cells[metricIndex] ?? "";
+    const value = row.cells[metricIndex]?.value ?? "";
     if (state.kind === "psu" && metricIndex === 0) {
       // Rating is quality-ranked, not alphabetic. Lower tier rank is better,
       // so negate it so the UI's descending sort puts best PSUs first.
@@ -2811,11 +2868,6 @@ function slotNote(ctx: EvalContext, kind: SelectableKind) {
   return "";
 }
 
-function metricCells(part: PartRecord) {
-  const defs = metricColumnsFor(part.kind as SelectableKind);
-  return defs.map((def) => def.getValue(part));
-}
-
 function fallbackNote(part: PartRecord) {
   if (isCasePart(part)) {
     return "";
@@ -2875,28 +2927,24 @@ function engineDecisionToSummary(
   const notes = decision.evidence
     .filter((e) => e.advisory && e.message)
     .map((e) => e.message);
-  const firstHighlight = evidenceHighlightCellIndex(decision.evidence);
+  const cellEvidence = decision.evidence.filter((e) => e.metric);
 
   if (!decision.evidence.length)
-    return { verdict: "unscored", messages: [], notes, highlightCellIndex: null };
-  if (decision.evidence.some((e) => e.verdict === "fail" && !e.advisory))
-    return { verdict: "fail", messages, notes, highlightCellIndex: firstHighlight };
-  if (decision.evidence.some((e) => e.verdict === "conditional" && !e.advisory))
-    return { verdict: "conditional", messages, notes, highlightCellIndex: firstHighlight };
-  return { verdict: "pass", messages: [], notes, highlightCellIndex: null };
+    return { verdict: "unscored", messages: [], notes, cellEvidence };
+  if (decision.verdict === "fail")
+    return { verdict: "fail", messages, notes, cellEvidence };
+  if (decision.verdict === "conditional")
+    return { verdict: "conditional", messages, notes, cellEvidence };
+  return { verdict: "pass", messages: [], notes, cellEvidence };
 }
 
-function evidenceHighlightCellIndex(evidence: FitmentEvidence[]): number | null {
-  const first = evidence.find(
-    (e) => e.verdict !== "pass" && !e.advisory && e.metric && gpuIssueCellIndex(e.metric),
-  );
-  if (first?.metric) return gpuIssueCellIndex(first.metric) ?? null;
-  // Cooler height is the height column in cooler columns
-  if (evidence.some((e) => e.metric === "coolerHeight" && e.verdict !== "pass")) {
-    const coolerHeightIdx = COOLER_COLUMNS.findIndex((c) => c.key === "height");
-    if (coolerHeightIdx >= 0) return coolerHeightIdx;
-  }
-  return null;
+function emptyToDash(value: string) {
+  return value && !isBlankSpec(value) ? value : "—";
+}
+
+function ratioFromLimit(value: number | null | undefined, ceiling: number) {
+  if (!value) return 0.34;
+  return Math.max(0.12, Math.min(0.94, value / ceiling));
 }
 
 function displayTitle(part: PartRecord | null) {
@@ -3300,22 +3348,4 @@ function psuTierBadge(part: GenericPart): string {
   const efficiency = psuEfficiencyLevel(part);
   const { iconSvg, iconColor, bgColor } = psuTierBadgeMeta(grade, efficiency);
   return `<span data-psu-tier-badge data-psu-tier-bg="${bgColor}" class="inline-flex items-center gap-1.5 text-base-content"><span class="inline-flex items-center justify-center w-[1.125rem] h-[1.125rem] rounded-sm" style="background-color:${bgColor};color:${iconColor}">${iconSvg}</span><span>${escapeHtml(label)}</span></span>`;
-}
-
-function gpuIssueCellIndex(code: string) {
-  // GPU metric columns: chipset(0), length(1), width(2), thickness(3), slots(4), ...
-  if (code.includes("gpuLengthMm")) return 1;
-  if (code.includes("gpuWidthMm")) return 2;
-  if (code.includes("gpuThicknessMm")) return 3;
-  if (code.includes("pcieSlots")) return 4;
-  return undefined;
-}
-
-function emptyToDash(value: string) {
-  return value && !isBlankSpec(value) ? value : "—";
-}
-
-function ratioFromLimit(value: number | null | undefined, ceiling: number) {
-  if (!value) return 0.34;
-  return Math.max(0.12, Math.min(0.94, value / ceiling));
 }

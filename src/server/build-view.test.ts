@@ -239,6 +239,63 @@ test("getBuildView with case+GPU selection shows build status", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cell-level evidence tests
+// ---------------------------------------------------------------------------
+
+test("cell-level evidence — GPU length conditional highlights length cell", async () => {
+  // GPU too long for case → length cell should have evidenceVerdict="fail"
+  // Case gpuLengthMm is null so no auto-populated filter blocks the row
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c", dimensions: { ...fakeCase().dimensions, gpuLengthMm: null } })],
+    gpus: [fakeGpu({ id: "g", dimensions: { lengthMm: 300, widthMm: 140, thicknessMm: 50, pcieSlots: 3 } })],
+    parts: [],
+  });
+  const url = new URL("http://localhost/build?kind=gpu&case=c&gpu=g");
+  const view = await getBuildView(emptyContext, url, store);
+
+  // Find the selected GPU row
+  const gpuRow = view.rows.find((r) => r.id === "g");
+  assert.ok(gpuRow, "gpu row should exist");
+
+  // Length column: GPU columns[0] = chipset, [1] = length, [2] = width, [3] = thickness, [4] = slots
+  const lengthCell = gpuRow!.cells[1];
+  assert.ok(lengthCell.value.includes("300"), "length cell value should show GPU length");
+  assert.equal(lengthCell.evidenceVerdict, "conditional");
+  assert.ok(
+    lengthCell.evidenceMessages.some((message) =>
+      message.includes("GPU length cannot be fully checked"),
+    ),
+    "length cell should carry the GPU length evidence message",
+  );
+});
+
+test("cell-level evidence — PSU form factor mismatch highlights form-factor cell", async () => {
+  // PSU form factor ATX but case only supports SFX
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c", psu: "SFX" })],
+    parts: [
+      { kind: "psu", id: "psu-1", displayName: "Test PSU", name: "Test PSU", brand: "Test", sourceSheet: "PSU", rowNumber: 1, status: "", availabilityStatus: "available" as const, sellerUrl: "", productUrl: "", specs: { form_factor: "ATX" }, dimensions: {}, releaseYear: null, flags: [], raw: {}, links: {} },
+    ],
+  });
+  const url = new URL("http://localhost/build?kind=psu&case=c&psu=psu-1");
+  const view = await getBuildView(emptyContext, url, store);
+
+  const psuRow = view.rows.find((r) => r.id === "psu-1");
+  assert.ok(psuRow, "psu row should exist");
+
+  // PSU columns[0] = tier/rating, [1] = form factor
+  const ffCell = psuRow!.cells[1];
+  assert.equal(ffCell.evidenceVerdict, "fail");
+  assert.equal(ffCell.value, "ATX");
+  assert.ok(
+    ffCell.evidenceMessages.some((message) =>
+      message.includes("PSU form factor ATX is not supported"),
+    ),
+    "form-factor cell should carry the PSU mismatch evidence message",
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 

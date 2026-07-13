@@ -17,8 +17,8 @@ import {
 import type {
   BuildContext,
   FitmentDecision,
+  FitmentDecisionVerdict,
   FitmentEvidence,
-  FitmentVerdict,
 } from "./types";
 
 export type { BuildContext } from "./types";
@@ -123,6 +123,7 @@ export function evaluateGpuAgainstCase(
       code: "low-profile-only",
       verdict: "fail",
       message: "This case appears to support low-profile GPUs only.",
+      metric: "pcieSlots",
       slots: ["gpu", "case"],
     });
   }
@@ -319,6 +320,7 @@ export function evaluateCpuCoolerAgainstCase(
       code: "unknown-case-cooler-limit",
       verdict: "conditional",
       message: "Case CPU cooler height limit is unknown.",
+      metric: "coolerHeight",
       slots: ["cpu-cooler", "case"],
     };
   }
@@ -328,6 +330,7 @@ export function evaluateCpuCoolerAgainstCase(
       code: "unknown-cooler-height",
       verdict: "conditional",
       message: `Cooler height is unknown; case max is ${formatValue(maxHeight, "mm")}.`,
+      metric: "coolerHeight",
       slots: ["cpu-cooler", "case"],
     };
   }
@@ -367,6 +370,7 @@ export function evaluatePsuAgainstCase(
       code: "unknown-psu-form-factor",
       verdict: "conditional",
       message: `PSU form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and PSU form factor is "${psuFormFactor || "unknown"}".`,
+      metric: "psuFormFactor",
       slots: ["psu", "case"],
     };
   }
@@ -376,6 +380,7 @@ export function evaluatePsuAgainstCase(
       code: "custom-psu",
       verdict: "conditional",
       message: `Custom PSU support requires manual verification (${psuFormFactor} in ${caseSupport}).`,
+      metric: "psuFormFactor",
       slots: ["psu", "case"],
     };
   }
@@ -385,6 +390,7 @@ export function evaluatePsuAgainstCase(
       code: "psu-form-factor-fits",
       verdict: "pass",
       message: `PSU form factor ${psuFormFactor} is supported by case envelope ${caseSupport}.`,
+      metric: "psuFormFactor",
       slots: ["psu", "case"],
     };
   }
@@ -393,6 +399,7 @@ export function evaluatePsuAgainstCase(
     code: "psu-form-factor-mismatch",
     verdict: "fail",
     message: `PSU form factor ${psuFormFactor} is not supported by case envelope ${caseSupport}.`,
+    metric: "psuFormFactor",
     slots: ["psu", "case"],
   };
 }
@@ -415,6 +422,7 @@ export function evaluateMotherboardAgainstCase(
       code: "unknown-motherboard-form-factor",
       verdict: "conditional",
       message: `Motherboard form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and board form factor is "${boardFormFactor || "unknown"}".`,
+      metric: "motherboardFormFactor",
       slots: ["motherboard", "case"],
     };
   }
@@ -424,6 +432,7 @@ export function evaluateMotherboardAgainstCase(
       code: "custom-motherboard",
       verdict: "conditional",
       message: `Custom motherboard support requires manual verification (${boardFormFactor} in ${caseSupport}).`,
+      metric: "motherboardFormFactor",
       slots: ["motherboard", "case"],
     };
   }
@@ -433,6 +442,7 @@ export function evaluateMotherboardAgainstCase(
       code: "motherboard-form-factor-fits",
       verdict: "pass",
       message: `Motherboard form factor ${boardFormFactor} is supported by case envelope ${caseSupport}.`,
+      metric: "motherboardFormFactor",
       slots: ["motherboard", "case"],
     };
   }
@@ -441,6 +451,7 @@ export function evaluateMotherboardAgainstCase(
     code: "motherboard-form-factor-mismatch",
     verdict: "fail",
     message: `Motherboard form factor ${boardFormFactor} is not supported by case envelope ${caseSupport}.`,
+    metric: "motherboardFormFactor",
     slots: ["motherboard", "case"],
   };
 }
@@ -460,6 +471,7 @@ export function evaluateRamAgainstMotherboard(
       code: "unknown-ram-type",
       verdict: "conditional",
       message: `RAM type cannot be fully checked; RAM is "${ramType || "unknown"}" and motherboard requires "${motherboardRamType || "unknown"}".`,
+      metric: "ramType",
       slots: ["ram", "motherboard"],
     };
   }
@@ -471,6 +483,7 @@ export function evaluateRamAgainstMotherboard(
       code: "ram-type-fits",
       verdict: "pass",
       message: `${ramType} RAM matches motherboard memory type ${motherboardRamType}.`,
+      metric: "ramType",
       slots: ["ram", "motherboard"],
     };
   }
@@ -479,6 +492,7 @@ export function evaluateRamAgainstMotherboard(
     code: "ram-type-mismatch",
     verdict: "fail",
     message: `${ramType} RAM does not match motherboard memory type ${motherboardRamType}.`,
+    metric: "ramType",
     slots: ["ram", "motherboard"],
   };
 }
@@ -502,6 +516,7 @@ export function evaluateRamAgainstCpuCooler(
       code: "cooler-no-ram-limit",
       verdict: "pass",
       message: "CPU cooler lists no RAM height limit.",
+      metric: "ramHeight",
       slots: ["ram", "cpu-cooler"],
     };
   }
@@ -511,6 +526,7 @@ export function evaluateRamAgainstCpuCooler(
       code: "unknown-ram-clearance",
       verdict: "conditional",
       message: `RAM clearance cannot be fully checked; RAM height is ${formatValue(ramHeight, "mm")} and cooler clearance is ${clearanceText || "unknown"}.`,
+      metric: "ramHeight",
       slots: ["ram", "cpu-cooler"],
     };
   }
@@ -520,6 +536,7 @@ export function evaluateRamAgainstCpuCooler(
       code: "ram-height-exceeds",
       verdict: "fail",
       message: `RAM height ${formatValue(ramHeight, "mm")} exceeds CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
+      metric: "ramHeight",
       slots: ["ram", "cpu-cooler"],
     };
   }
@@ -528,6 +545,7 @@ export function evaluateRamAgainstCpuCooler(
     code: "ram-height-fits",
     verdict: "pass",
     message: `RAM height ${formatValue(ramHeight, "mm")} fits CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
+    metric: "ramHeight",
     slots: ["ram", "cpu-cooler"],
   };
 }
@@ -539,16 +557,17 @@ export function evaluateRamAgainstCpuCooler(
 /**
  * Combine a list of evidence items into a single decision verdict.
  * "fail" wins over "conditional" wins over "pass" wins over "unscored".
- * Advisory items are excluded from verdict computation.
+ * Conditional advisories count as conditional because practical build risk
+ * must remain visible in the fitment decision.
  */
 export function summarizeEvidence(
   evidence: FitmentEvidence[],
-): FitmentVerdict {
+): FitmentDecisionVerdict {
   if (!evidence.length) return "unscored";
-  const nonAdvisory = evidence.filter((e) => !e.advisory);
-  if (!nonAdvisory.length) return "pass";
-  if (nonAdvisory.some((e) => e.verdict === "fail")) return "fail";
-  if (nonAdvisory.some((e) => e.verdict === "conditional")) return "conditional";
+  // Fail always wins
+  if (evidence.some((e) => e.verdict === "fail")) return "fail";
+  // Conditional includes advisory conditional — treat as real conditional
+  if (evidence.some((e) => e.verdict === "conditional")) return "conditional";
   return "pass";
 }
 
@@ -654,7 +673,7 @@ export function evaluateCandidateFitment(
  */
 export function evaluateBuildFitment(
   build: BuildContext,
-): { verdict: FitmentVerdict; evidence: FitmentEvidence[] } {
+): { verdict: FitmentDecisionVerdict; evidence: FitmentEvidence[] } {
   const allEvidence: FitmentEvidence[] = [];
 
   if (build.activeCase && build.activeGpu) {

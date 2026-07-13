@@ -1,7 +1,7 @@
 /**
  * Regression tests for fuseSearchRows (catalog search/ranking).
  *
- * Run with:  npm run test:search
+ * Run with:  npm run test
  * Requires:  tsx (already a devDependency)
  * No D1 or cloudflare:workers needed — pure function test.
  */

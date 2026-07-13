@@ -98,6 +98,7 @@ test("buildSearchParams and buildUrl produce same params", () => {
 test("buildSearchParams → parseBuildQuery round-trips", () => {
   const state: BuildQueryState = {
     ...emptyState(),
+    kind: "case",
     selectedIds: { case: "c1", gpu: "g2", "cpu-cooler": "cc3" },
     search: "noctua",
     page: 2,
@@ -105,6 +106,8 @@ test("buildSearchParams → parseBuildQuery round-trips", () => {
     dir: "desc",
     showSparseRows: true,
     caseVolumeTier: "sub-10l",
+    // max-gpu-length-mm is GPU-only; since kind=case it gets dropped.
+    // case-max-volume-l is a case param and survives.
     numericFilters: { "max-gpu-length-mm": 320, "case-max-volume-l": 15 },
     psuFeatures: [],
     psuTier: null,
@@ -122,7 +125,8 @@ test("buildSearchParams → parseBuildQuery round-trips", () => {
   assert.equal(reparsed.showSparseRows, state.showSparseRows);
   assert.equal(reparsed.caseVolumeTier, state.caseVolumeTier);
   assert.deepEqual(reparsed.selectedIds, state.selectedIds);
-  assert.deepEqual(reparsed.numericFilters, state.numericFilters);
+  // GPU-only param is dropped by kind filter; only case param survives
+  assert.deepEqual(reparsed.numericFilters, { "case-max-volume-l": 15 });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,25 +191,51 @@ test("buildSearchParams applies patch clearSlot", () => {
 // Numeric filters
 // ---------------------------------------------------------------------------
 
-test("buildSearchParams includes numeric filters", () => {
+test("buildSearchParams includes numeric filters valid for kind", () => {
   const state: BuildQueryState = {
     ...emptyState(),
-    numericFilters: { "max-gpu-length-mm": 320, "cooler-max-height-mm": 135 },
+    kind: "case",
+    numericFilters: { "max-gpu-length-mm": 320, "case-max-volume-l": 15 },
   };
   const params = buildSearchParams(state);
-  assert.equal(params.get("max-gpu-length-mm"), "320");
-  assert.equal(params.get("cooler-max-height-mm"), "135");
+  // max-gpu-length-mm is GPU-only, dropped because kind=case
+  assert.equal(params.get("max-gpu-length-mm"), null);
+  // case-max-volume-l is a case param, survives
+  assert.equal(params.get("case-max-volume-l"), "15");
 });
 
 test("numeric filters round-trip through buildSearchParams → parseBuildQuery", () => {
   const original: BuildQueryState = {
     ...emptyState(),
-    numericFilters: { "max-gpu-length-mm": 320, "case-max-volume-l": 15.5 },
+    kind: "gpu",
+    numericFilters: {
+      "max-gpu-length-mm": 320,
+      "max-gpu-width-mm": 140,
+      "case-max-volume-l": 15.5,
+    },
   };
   const params = buildSearchParams(original);
   const url = `/build?${params.toString()}`;
   const reparsed = parseBuildQuery(new URL(url, "http://localhost"));
-  assert.deepEqual(reparsed.numericFilters, { "max-gpu-length-mm": 320, "case-max-volume-l": 15.5 });
+  // case-max-volume-l is case-only, dropped when kind=gpu
+  assert.deepEqual(reparsed.numericFilters, {
+    "max-gpu-length-mm": 320,
+    "max-gpu-width-mm": 140,
+  });
+});
+
+test("numeric filters preserve recognized params that are not UI grouped", () => {
+  const state: BuildQueryState = {
+    ...emptyState(),
+    kind: "case",
+    numericFilters: {
+      "case-max-drive-25": 2,
+      "case-max-gpu-width-mm": 145,
+    },
+  };
+  const params = buildSearchParams(state);
+  assert.equal(params.get("case-max-drive-25"), "2");
+  assert.equal(params.get("case-max-gpu-width-mm"), "145");
 });
 
 // ---------------------------------------------------------------------------
@@ -334,6 +364,55 @@ test("buildSearchParams sort=release-year, dir=asc includes dir", () => {
   const state = { ...emptyState(), sort: "release-year", dir: "asc" as const };
   const params = buildSearchParams(state);
   assert.equal(params.get("dir"), "asc");
+});
+
+// ---------------------------------------------------------------------------
+// Kind-switching filter cleanup
+// ---------------------------------------------------------------------------
+
+test("switching from gpu to case drops gpu numeric params", () => {
+  const state: BuildQueryState = {
+    ...emptyState(),
+    kind: "gpu",
+    numericFilters: { "max-gpu-length-mm": 320, "case-max-volume-l": 15 },
+  };
+  // Patch kind to case
+  const params = buildSearchParams(state, { kind: "case" });
+  // GPU-only param should be dropped
+  assert.equal(params.get("max-gpu-length-mm"), null);
+  // Case param should survive
+  assert.equal(params.get("case-max-volume-l"), "15");
+});
+
+test("switching from case to gpu drops case-only numeric params", () => {
+  const state: BuildQueryState = {
+    ...emptyState(),
+    kind: "case",
+    numericFilters: { "max-gpu-length-mm": 320, "case-max-volume-l": 15, "case-max-length-mm": 400 },
+  };
+  // Patch kind to gpu
+  const params = buildSearchParams(state, { kind: "gpu" });
+  // GPU param should survive
+  assert.equal(params.get("max-gpu-length-mm"), "320");
+  // Case-only params should be dropped
+  assert.equal(params.get("case-max-volume-l"), null);
+  assert.equal(params.get("case-max-length-mm"), null);
+});
+
+test("switching from case to gpu drops case-volume and case-intent", () => {
+  const state: BuildQueryState = {
+    ...emptyState(),
+    kind: "case",
+    caseVolumeTier: "sub-10l",
+    caseIntent: "steam-machine",
+    numericFilters: { "case-max-volume-l": 15 },
+  };
+  const params = buildSearchParams(state, { kind: "gpu" });
+  assert.equal(params.get("case-volume"), null, "case-volume should be dropped");
+  assert.equal(params.get("case-intent"), null, "case-intent should be dropped");
+  // case-max-volume-l should also be dropped since it's a case-only numeric param
+  assert.equal(params.get("case-max-volume-l"), null, "case-max-volume-l should be dropped");
+  assert.equal(params.get("kind"), "gpu");
 });
 
 // ---------------------------------------------------------------------------

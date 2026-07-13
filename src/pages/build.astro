@@ -299,11 +299,18 @@ function psuBadgeBackground(value: string): string | undefined {
                         <td>
                           <strong class="block max-w-[24rem] truncate text-[0.95rem] font-semibold leading-snug" title={row.title}>{row.title}</strong>
                         </td>
-                        {row.cells.map((value, index) => (
-                          <td class:list={["font-mono text-sm whitespace-nowrap tabular-nums", { "bg-error/[0.06] !text-error font-bold": row.highlightCellIndex === index }]} style={isPsuBadge(value) ? { backgroundColor: psuBadgeBackground(value) } : undefined}>
-                            {isPsuBadge(value) ? <Fragment set:html={value} /> : value}
-                          </td>
-                        ))}
+                        {row.cells.map((cell) => {
+                          const cellStyle = cell.evidenceVerdict === "fail"
+                            ? "bg-error/[0.06] !text-error font-bold"
+                            : cell.evidenceVerdict === "conditional"
+                              ? "bg-warning/[0.04] !text-warning font-semibold"
+                              : "";
+                          return (
+                            <td class:list={["font-mono text-sm whitespace-nowrap tabular-nums", cellStyle]} style={isPsuBadge(cell.value) ? { backgroundColor: psuBadgeBackground(cell.value) } : undefined} title={cell.evidenceMessages.join("; ")}>
+                              {isPsuBadge(cell.value) ? <Fragment set:html={cell.value} /> : cell.value}
+                            </td>
+                          );
+                        })}
                         <td class="notes-column text-sm text-base-content/60 leading-relaxed">{isPsuBadge(row.note) ? <Fragment set:html={row.note} /> : row.note}</td>
                       </tr>
                     ))}

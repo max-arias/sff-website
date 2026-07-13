@@ -16,6 +16,7 @@ import {
   evaluatePsuAgainstCase,
   evaluateRamAgainstCpuCooler,
   evaluateRamAgainstMotherboard,
+  summarizeEvidence,
 } from "./engine";
 
 // ---------------------------------------------------------------------------
@@ -495,6 +496,129 @@ test("empty build → unscored", () => {
   const build = buildContext();
   const result = evaluateBuildFitment(build);
   assert.equal(result.verdict, "unscored");
+});
+
+// ---------------------------------------------------------------------------
+// summarizeEvidence — advisory conditional semantics
+// ---------------------------------------------------------------------------
+
+test("summarizeEvidence with only advisory conditional → conditional (not pass)", () => {
+  const build = buildContext({
+    activeCase: fakeCase({ style: "Sandwich" }),
+    activeGpu: fakeGpu({ dimensions: { lengthMm: 300, widthMm: 140, thicknessMm: 50, pcieSlots: 3 } }),
+  });
+  // Sandwich advisory is conditional; GPU dimensions all fit
+  const decision = evaluateBuildFitment(build);
+  assert.equal(decision.verdict, "conditional", "sandwich advisory should make build conditional");
+});
+
+test("summarizeEvidence with only riser advisory → conditional", () => {
+  const build = buildContext({
+    activeCase: fakeCase({ gpuRiser: "Y" }),
+    activeGpu: fakeGpu({ dimensions: { lengthMm: 300, widthMm: 140, thicknessMm: 50, pcieSlots: 3 } }),
+  });
+  const decision = evaluateBuildFitment(build);
+  assert.equal(decision.verdict, "conditional", "riser advisory should make build conditional");
+});
+
+test("summarizeEvidence with only watercooled advisory → conditional", () => {
+  const build = buildContext({
+    activeCase: fakeCase(),
+    activeGpu: fakeGpu({ dimensions: { lengthMm: 300, widthMm: 140, thicknessMm: 50, pcieSlots: 3 }, watercooled: true }),
+  });
+  const decision = evaluateBuildFitment(build);
+  assert.equal(decision.verdict, "conditional", "watercooled advisory should make build conditional");
+});
+
+test("summarizeEvidence with fail still wins over advisory conditional", () => {
+  const build = buildContext({
+    activeCase: fakeCase({ style: "Sandwich", dimensions: { ...fakeCase().dimensions, gpuLengthMm: 280 } }),
+    activeGpu: fakeGpu({ dimensions: { lengthMm: 300, widthMm: 140, thicknessMm: 50, pcieSlots: 3 } }),
+  });
+  const decision = evaluateBuildFitment(build);
+  assert.equal(decision.verdict, "fail", "fail should win over conditional advisory");
+});
+
+test("tight-fit pass advisory remains pass when only evidence", () => {
+  const evidence = evaluateGpuAgainstCase(
+    fakeGpu({ dimensions: { lengthMm: 319, widthMm: 140, thicknessMm: 50, pcieSlots: 3 } }),
+    fakeCase({ dimensions: { ...fakeCase().dimensions, gpuLengthMm: 320 } }),
+  );
+  // Tight-fit has verdict="pass" and advisory=true — should remain pass in summary
+  const verdict = summarizeEvidence(evidence);
+  assert.equal(verdict, "pass", "tight-fit pass advisory should remain pass");
+});
+
+// ---------------------------------------------------------------------------
+// Evidence metric keys
+// ---------------------------------------------------------------------------
+
+test("GPU length exceed has gpuLengthMm metric", () => {
+  const evidence = evaluateGpuAgainstCase(
+    fakeGpu({ dimensions: { lengthMm: 350, widthMm: 140, thicknessMm: 50, pcieSlots: 3 } }),
+    fakeCase({ dimensions: { ...fakeCase().dimensions, gpuLengthMm: 320 } }),
+  );
+  const fail = evidence.find((e) => e.code === "exceeds-gpuLengthMm");
+  assert.ok(fail, "expected fail evidence");
+  assert.equal(fail!.metric, "gpuLengthMm");
+});
+
+test("PSU form factor mismatch has psuFormFactor metric", () => {
+  const evidence = evaluatePsuAgainstCase(
+    gp({ kind: "psu", specs: { form_factor: "ATX" } }),
+    fakeCase({ psu: "SFX" }),
+  );
+  assert.equal(evidence.metric, "psuFormFactor");
+});
+
+test("PSU form factor fits has psuFormFactor metric", () => {
+  const evidence = evaluatePsuAgainstCase(
+    gp({ kind: "psu", specs: { form_factor: "SFX" } }),
+    fakeCase({ psu: "SFX" }),
+  );
+  assert.equal(evidence.metric, "psuFormFactor");
+});
+
+test("Motherboard form factor mismatch has motherboardFormFactor metric", () => {
+  const evidence = evaluateMotherboardAgainstCase(
+    gp({ kind: "motherboard", specs: { form_factor: "ATX" } }),
+    fakeCase({ raw: { Motherboard: "mITX" } }),
+  );
+  assert.equal(evidence.metric, "motherboardFormFactor");
+});
+
+test("RAM type mismatch has ramType metric", () => {
+  const evidence = evaluateRamAgainstMotherboard(
+    gp({ kind: "ram", specs: { memory_type: "DDR4" } }),
+    gp({ kind: "motherboard", specs: { ram_type: "DDR5" } }),
+  );
+  assert.equal(evidence.metric, "ramType");
+});
+
+test("RAM height exceed has ramHeight metric", () => {
+  const evidence = evaluateRamAgainstCpuCooler(
+    gp({ kind: "ram", dimensions: { height_incl_contact_pins: 50 } }),
+    gp({ kind: "cpu-cooler", dimensions: { ram_clearance: 45 } }),
+  );
+  assert.equal(evidence.metric, "ramHeight");
+});
+
+test("Cooler height exceed has coolerHeight metric", () => {
+  const evidence = evaluateCpuCoolerAgainstCase(
+    gp({ dimensions: { height: 140 } }),
+    fakeCase({ dimensions: { ...fakeCase().dimensions, cpuCoolerHeightMm: 135 } }),
+  );
+  assert.equal(evidence.metric, "coolerHeight");
+});
+
+test("Low-profile-only has pcieSlots metric", () => {
+  const evidence = evaluateGpuAgainstCase(
+    fakeGpu({ lowProfile: false }),
+    fakeCase({ dimensions: { ...fakeCase().dimensions, lpPcieSlots: 2, pcieSlots: 0 } }),
+  );
+  const fail = evidence.find((e) => e.code === "low-profile-only");
+  assert.ok(fail);
+  assert.equal(fail!.metric, "pcieSlots");
 });
 
 // ---------------------------------------------------------------------------

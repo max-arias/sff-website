@@ -55,37 +55,30 @@ The highest-value recommendations were implemented in verified, committed slices
 The following passed during the final verification pass:
 
 ```bash
-npm run test:build-filter-params
-npm run test:build-state
-npm run test:build-view
-npm run test:fitment
-npm run test:generic-part
-npm run test:search
+npm run test
 npm run typecheck
 ```
 
 Observed totals:
 
-- `test:build-filter-params`: 6 passed
-- `test:build-state`: 26 passed
-- `test:build-view`: 6 passed
-- `test:fitment`: 36 passed
-- `test:generic-part`: 28 passed
-- `test:search`: 11 passed
+- `test`: all focused TypeScript suites passed
 - `typecheck`: 0 errors
 
 `astro check` still reported non-blocking hints about unused variables in `scripts/enrich-psu-tiers.ts` and `src/lib/sql.ts`.
 
 ## Recommended next work
 
-See [`README.md`](./README.md) in this directory for the current TODO list. The likely next move is either:
+See [`README.md`](./README.md) in this directory for the current TODO list.
 
-1. Run `code-review` on the refactor series; or
-2. Use `codebase-design` to design the **Column-Level Evidence Highlight** view-model seam before implementing it.
+Since this handoff was written, the refactor-series review and **Column-Level Evidence Highlight** cleanup have been completed. The likely next move is now:
+
+1. Design **Constraint Jumps / Open Constraints**; or
+2. Plan **Provenance / raw source visibility**.
 
 ## Cautions
 
 - Do not undo Fitment Engine purity: no D1, Astro, URL state, table columns, or `cellIndex` imports in `src/fitment/`.
 - Keep UI-specific evidence mapping outside the engine.
+- Keep cell-level evidence mapping in the table/view-model layer; `src/fitment/` should expose domain metric keys only.
 - Add tests for any URL query contract change.
 - Treat the saved HTML report as historical context: several findings have already been resolved by the commits listed above.
