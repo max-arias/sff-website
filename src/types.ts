@@ -17,6 +17,8 @@ export type PartKind =
   | "reference"
   | "unknown";
 
+export type AvailabilityStatus = "available" | "unavailable";
+
 export type FitVerdict = "pass" | "fail" | "conditional";
 
 export interface RawSheetRow {
@@ -35,6 +37,7 @@ export interface GenericPart {
   name: string;
   displayName: string;
   status: string;
+  availabilityStatus: AvailabilityStatus;
   sellerUrl: string;
   productUrl: string;
   specs: Record<string, string>;
@@ -97,6 +100,7 @@ export interface CasePart {
   sidePanel: string;
   caseMaterial: string;
   status: string;
+  availabilityStatus: AvailabilityStatus;
   gpuRiser: string;
   psu: string;
   motherboard: string;
@@ -173,6 +177,7 @@ export interface GpuPart {
   usbCCount: number | null;
   dviD: boolean;
   remarks: string;
+  availabilityStatus: AvailabilityStatus;
   dimensions: {
     lengthMm: number | null;
     widthMm: number | null;

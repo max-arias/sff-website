@@ -1,6 +1,10 @@
 import type { CasePart, GenericPart, GpuPart, IntakeResult, PsuTierEntry, PsuTierOverride } from "../types";
 import { normalizePsuMatchKey } from "./psu-tier-list";
 import { uniqueSlug } from "./slug";
+import {
+  dimensionNumber as dim,
+  specRaw as spec,
+} from "./generic-part";
 
 function escapeSql(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "null";
@@ -14,22 +18,6 @@ function json(value: unknown) {
 
 function bool(value: boolean) {
   return value ? "1" : "0";
-}
-
-function dim(part: GenericPart, keys: string[]) {
-  for (const key of keys) {
-    const value = part.dimensions[key];
-    if (value !== undefined) return value;
-  }
-  return null;
-}
-
-function spec(part: GenericPart, keys: string[]) {
-  for (const key of keys) {
-    const value = part.specs[key]?.trim();
-    if (value) return value;
-  }
-  return "";
 }
 
 function psuPartMatchKeys(part: GenericPart) {
@@ -74,15 +62,6 @@ export function psuTierForPart(
   });
 
   return matches.size === 1 ? [...matches.values()][0] : null;
-}
-
-function motherboardFormFactor(part: GenericPart) {
-  const explicit = spec(part, ["form_factor"]);
-  if (explicit) return explicit;
-  const source = part.sourceSheet.toLowerCase();
-  if (source.includes("mitx")) return "mITX";
-  if (source.includes("matx")) return "mATX";
-  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +121,7 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
     "price_usd",
     "sff_net_link",
     "status",
+    "availability_status",
     "last_update",
     "created_at",
     "updated_at"
@@ -229,6 +209,7 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
     escapeSql(dim(part, ["price_usd"])),
     escapeSql(spec(part, ["sff_net_link", "link"])),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     escapeSql(spec(part, ["last_update"])),
     "current_timestamp",
     "current_timestamp"
@@ -262,6 +243,7 @@ export function gpuInsert(runId: string, slug: string, part: GenericPart, gpuPar
     "blower",
     "remarks",
     "status",
+    "availability_status",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
@@ -288,6 +270,7 @@ export function gpuInsert(runId: string, slug: string, part: GenericPart, gpuPar
     bool(spec(part, ["blower"]) === "Y" || part.flags.includes("blower")),
     escapeSql(spec(part, ["remarks"])),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;
@@ -336,6 +319,7 @@ export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) 
     "review_by_aris",
     "remarks",
     "status",
+    "availability_status",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
@@ -380,6 +364,7 @@ export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) 
     escapeSql(spec(part, ["review_by_aris"])),
     escapeSql(spec(part, ["remarks"])),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;
@@ -410,6 +395,7 @@ export function fanInsert(runId: string, slug: string, part: GenericPart) {
     "review_by_aris",
     "remarks",
     "status",
+    "availability_status",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
@@ -436,6 +422,7 @@ export function fanInsert(runId: string, slug: string, part: GenericPart) {
     escapeSql(spec(part, ["review_by_aris"])),
     escapeSql(spec(part, ["remarks"])),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;
@@ -505,6 +492,7 @@ export function motherboardInsert(runId: string, slug: string, part: GenericPart
     "temp_sensor_header",
     "debug_led",
     "status",
+    "availability_status",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
@@ -570,6 +558,7 @@ export function motherboardInsert(runId: string, slug: string, part: GenericPart
     bool(spec(part, ["temp_sensor_header"]) === "Y"),
     bool(spec(part, ["debug_led"]) === "Y"),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;
@@ -623,6 +612,7 @@ export function psuInsert(
     "remarks",
     "review_by_aris",
     "status",
+    "availability_status",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
@@ -659,6 +649,7 @@ export function psuInsert(
     escapeSql(spec(part, ["remarks"])),
     escapeSql(spec(part, ["review_by_aris"])),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;
@@ -673,6 +664,7 @@ export function ramInsert(runId: string, slug: string, part: GenericPart) {
     "height_mm",
     "rgb",
     "status",
+    "availability_status",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
@@ -683,6 +675,7 @@ export function ramInsert(runId: string, slug: string, part: GenericPart) {
     escapeSql(dim(part, ["height_mm", "height", "height_incl_contact_pins"])),
     bool(spec(part, ["rgb"]) === "Y" || part.flags.includes("rgb")),
     escapeSql(part.status ?? ""),
+    escapeSql(part.availabilityStatus),
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;

@@ -21,11 +21,30 @@ export interface BuildQueryState {
   caseIntent: CaseIntent | null;
   /** Generic numeric max filters keyed by query param name (e.g. "case-max-volume-l", "max-gpu-length-mm") */
   numericFilters: Record<string, number>;
+  psuTier: PsuTierFilter | null;
+  psuFormFactor: PsuFormFactorFilter | null;
+  psuFeatures: PsuFeatureFilter[];
 }
 
 export type CaseVolumeTier = "sub-10l" | "10l-20l" | "over-20l";
 
 export type CaseIntent = "steam-machine";
+
+export type PsuTierFilter = "a-or-better" | "b-or-better" | "c-or-better";
+
+export type PsuFormFactorFilter =
+  | "sfx"
+  | "sfx-l"
+  | "flex-atx"
+  | "atx"
+  | "tfx"
+  | "1u";
+
+export type PsuFeatureFilter =
+  | "atx-3"
+  | "12vhpwr"
+  | "fully-modular"
+  | "semi-passive";
 
 export type BuildQueryPatch = Partial<{
   selectedIds: SelectedIds;
@@ -39,6 +58,9 @@ export type BuildQueryPatch = Partial<{
   caseVolumeTier: CaseVolumeTier | null;
   caseIntent: CaseIntent | null;
   numericFilters: Record<string, number>;
+  psuTier: PsuTierFilter | null;
+  psuFormFactor: PsuFormFactorFilter | null;
+  psuFeatures: PsuFeatureFilter[];
   resetPage: boolean;
 }>;
 
@@ -217,6 +239,9 @@ export function parseBuildQuery(url: URL): BuildQueryState {
     caseVolumeTier: sanitizeCaseVolumeTier(url.searchParams.get("case-volume")),
     caseIntent: sanitizeCaseIntent(url.searchParams.get("case-intent")),
     numericFilters: parseNumericFilters(url),
+    psuTier: sanitizePsuTier(url.searchParams.get("psu-tier")),
+    psuFormFactor: sanitizePsuFormFactor(url.searchParams.get("psu-form")),
+    psuFeatures: url.searchParams.getAll("psu-feature").filter(isPsuFeature),
   };
 }
 
@@ -240,6 +265,13 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
     patch.numericFilters !== undefined
       ? patch.numericFilters
       : state.numericFilters;
+  const psuTier = patch.psuTier !== undefined ? patch.psuTier : state.psuTier;
+  const psuFormFactor =
+    patch.psuFormFactor !== undefined
+      ? patch.psuFormFactor
+      : state.psuFormFactor;
+  const psuFeatures =
+    patch.psuFeatures !== undefined ? patch.psuFeatures : state.psuFeatures;
   const params = new URLSearchParams();
 
   slotOrder.forEach(({ kind: slotKind }) => {
@@ -258,6 +290,11 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
   if (showSparseRows) params.set("show-sparse", "1");
   if (kind === "case" && caseVolumeTier) params.set("case-volume", caseVolumeTier);
   if (kind === "case" && caseIntent) params.set("case-intent", caseIntent);
+  if (kind === "psu" && psuTier) params.set("psu-tier", psuTier);
+  if (kind === "psu" && psuFormFactor) params.set("psu-form", psuFormFactor);
+  if (kind === "psu") {
+    for (const feature of psuFeatures) params.append("psu-feature", feature);
+  }
   for (const [paramName, value] of Object.entries(numericFilters)) {
     if (value !== null && value !== undefined) {
       params.set(paramName, formatQueryNumber(value));
@@ -283,6 +320,30 @@ function sanitizeCaseVolumeTier(value: string | null): CaseVolumeTier | null {
 
 function sanitizeCaseIntent(value: string | null): CaseIntent | null {
   return value === "steam-machine" ? value : null;
+}
+
+function sanitizePsuTier(value: string | null): PsuTierFilter | null {
+  return value === "a-or-better" || value === "b-or-better" || value === "c-or-better"
+    ? value
+    : null;
+}
+
+function sanitizePsuFormFactor(value: string | null): PsuFormFactorFilter | null {
+  return value === "sfx" ||
+    value === "sfx-l" ||
+    value === "flex-atx" ||
+    value === "atx" ||
+    value === "tfx" ||
+    value === "1u"
+    ? value
+    : null;
+}
+
+function isPsuFeature(value: string): value is PsuFeatureFilter {
+  return value === "atx-3" ||
+    value === "12vhpwr" ||
+    value === "fully-modular" ||
+    value === "semi-passive";
 }
 
 function formatQueryNumber(value: number) {

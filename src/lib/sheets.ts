@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { fetchPsuTierEntries } from "./psu-tier-list";
 import type {
+  AvailabilityStatus,
   CasePart,
   GenericPart,
   GpuPart,
@@ -46,6 +47,21 @@ function isUnknown(value: string) {
 
 function isYes(value: string) {
   return ["y", "yes", "true", "1"].includes(value.trim().toLowerCase());
+}
+
+function normalizeAvailabilityStatus(raw: string | null | undefined): AvailabilityStatus {
+  const normalized = (raw ?? "").trim().toLowerCase();
+  if (!normalized) return "available";
+  if (/^(available|active|in stock|current|link)$/.test(normalized)) return "available";
+  if (
+    /discontinued|unavailable|retired|obsolete/.test(normalized) ||
+    /out\s*of\s*(stock|production)/.test(normalized) ||
+    /no\s*longer\s*(available|made|sold)/.test(normalized) ||
+    /end\s+of\s+life|\beol\b/.test(normalized)
+  ) {
+    return "unavailable";
+  }
+  return "available";
 }
 
 function parseYear(value: string): number | null {
@@ -233,6 +249,7 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
     name: name || fallbackName,
     displayName,
     status,
+    availabilityStatus: normalizeAvailabilityStatus(status),
     sellerUrl,
     productUrl,
     releaseYear: extractReleaseYear(values),
@@ -295,6 +312,7 @@ function normalizeCase(raw: RawSheetRow): CasePart {
     sidePanel: cell(values, "Side panel"),
     caseMaterial: cell(values, "Case material"),
     status,
+    availabilityStatus: normalizeAvailabilityStatus(status),
     gpuRiser,
     psu: cell(values, "PSU"),
     motherboard: cell(values, "Motherboard"),
@@ -355,6 +373,7 @@ function normalizeGpu(raw: RawSheetRow): GpuPart {
   const watercooled = isYes(cell(values, "Watercooled"));
   const lowProfile = isYes(cell(values, "Low Profile"));
   const pciePins = cell(values, "PCIe Pins");
+  const status = firstCell(values, ["Status", "Availability"]);
   const flags = dimensionFlags(values, [
     "Length (mm)",
     "Width (mm)",
@@ -396,6 +415,7 @@ function normalizeGpu(raw: RawSheetRow): GpuPart {
     usbCCount: parseNumber(cell(values, "USB-C Count")),
     dviD: isYes(cell(values, "DVI-D")),
     remarks: cell(values, "Remarks"),
+    availabilityStatus: normalizeAvailabilityStatus(status),
     releaseYear: extractReleaseYear(values),
     dimensions: {
       lengthMm: parseNumber(cell(values, "Length (mm)")),

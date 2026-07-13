@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
+import type { AvailabilityStatus, CasePart, GenericPart, GpuPart, PartKind } from "../types";
 import {
   fuseSearchRows,
   rowSearchText,
@@ -62,6 +62,12 @@ function kindToTable(kind: string): string | null {
   return TABLE_MAP[kind] ?? null;
 }
 
+function availabilityStatusFromRow(value: unknown): AvailabilityStatus {
+  return String(value ?? "available") === "unavailable"
+    ? "unavailable"
+    : "available";
+}
+
 // ---------------------------------------------------------------------------
 // DB helpers
 // ---------------------------------------------------------------------------
@@ -96,6 +102,7 @@ function rowToCase(row: Record<string, unknown>): CasePart {
     sidePanel: String(row.side_panel ?? ""),
     caseMaterial: String(row.case_material ?? ""),
     status: String(row.status ?? ""),
+    availabilityStatus: availabilityStatusFromRow(row.availability_status),
     gpuRiser: String(row.gpu_riser ?? ""),
     psu: String(row.psu ?? ""),
     motherboard: String(row.motherboard ?? ""),
@@ -174,6 +181,7 @@ function rowToGpu(row: Record<string, unknown>): GpuPart {
     usbCCount: nullableNumber(row.usb_c_count),
     dviD: booleanish(row.dvi_d),
     remarks: String(row.remarks ?? ""),
+    availabilityStatus: availabilityStatusFromRow(row.availability_status),
     dimensions: {
       lengthMm: nullableNumber(row.length_mm),
       widthMm: nullableNumber(row.width_mm),
@@ -201,7 +209,8 @@ function rowToGenericPart(
       key === "id" ||
       key === "created_at" ||
       key === "updated_at" ||
-      key === "status"
+      key === "status" ||
+      key === "availability_status"
     )
       continue;
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -234,6 +243,7 @@ function rowToGenericPart(
       String(row.name ?? row.model ?? "")
     ).trim(),
     status: String(row.status ?? ""),
+    availabilityStatus: availabilityStatusFromRow(row.availability_status),
     sellerUrl: "",
     productUrl: "",
     specs,

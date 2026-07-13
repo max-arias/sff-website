@@ -8,7 +8,7 @@ const numericFilterNames = new Set(view.numericFilters.map((filter) => filter.na
 const numericFilterHiddenInputs = view.hiddenInputs.filter((input) => !numericFilterNames.has(input.name as never));
 const sparseToggleHiddenInputs = view.hiddenInputs.filter((input) => input.name !== "show-sparse");
 const sparseRowsTooltip = "Rows without fitment-relevant data are hidden by default. Turn this on to include them.";
-const hasActiveNumericFilter = view.numericFilters.some((filter) => filter.active) || Boolean(view.state.caseVolumeTier) || Boolean(view.state.caseIntent);
+const hasActiveNumericFilter = view.numericFilterGroups.some((group) => group.activeCount > 0) || Boolean(view.state.caseVolumeTier) || Boolean(view.state.caseIntent);
 const hasAnySelection = view.slots.some((s) => s.id);
 const actionHeader = view.tableHeaders.find((header) => header.label === "Action");
 const dataTableHeaders = view.tableHeaders.filter((header) => header.label !== "Action");
@@ -130,7 +130,7 @@ function psuBadgeBackground(value: string): string | undefined {
                       <div class="filter-popover-body">
                         {group.options.length > 0 && (
                           <div class="flex flex-col gap-1.5">
-                            <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">Case presets</span>
+                            <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">Options</span>
                             <div class="flex flex-wrap gap-1.5">
                               {group.options.map((option) => (
                                 <a

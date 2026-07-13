@@ -68,6 +68,7 @@ create table if not exists cases (
   price_usd                 real,
   sff_net_link              text    not null default '',
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   last_update               text    not null default '',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
@@ -101,6 +102,7 @@ create table if not exists gpus (
   blower                    boolean not null default 0,
   remarks                   text    not null default '',
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
 );
@@ -151,6 +153,7 @@ create table if not exists cpu_coolers (
   review_by_aris            text    not null default '',
   remarks                   text    not null default '',
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
 );
@@ -183,6 +186,7 @@ create table if not exists fans (
   review_by_aris            text    not null default '',
   remarks                   text    not null default '',
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
 );
@@ -254,6 +258,7 @@ create table if not exists motherboards (
   temp_sensor_header        boolean not null default 0,
   debug_led                 boolean not null default 0,
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
 );
@@ -296,6 +301,7 @@ create table if not exists psus (
   remarks                   text    not null default '',
   review_by_aris            text    not null default '',
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
 );
@@ -312,6 +318,7 @@ create table if not exists ram (
   height_mm                 real,
   rgb                       boolean not null default 0,
   status                    text    not null default '',
+  availability_status       text    not null default 'available',
   created_at                text    not null default current_timestamp,
   updated_at                text    not null default current_timestamp
 );
