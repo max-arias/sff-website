@@ -1,5 +1,6 @@
 import type { APIContext } from "astro";
 import {
+  buildSearchParams,
   buildUrl,
   parseBuildQuery,
   slotOrder,
@@ -2437,49 +2438,18 @@ function buildIssues(
   return sections;
 }
 
+/**
+ * Hidden inputs for the search form, derived from the canonical
+ * buildSearchParams helper (same params that buildUrl emits).
+ * Excludes "search" (comes from the visible input) and "page"
+ * (submitting search resets to page 1).
+ */
 function searchHiddenInputs(state: BuildQueryState) {
-  const inputs: Array<{ name: string; value: string }> = [
-    { name: "kind", value: state.kind },
-  ];
-  slotOrder.forEach(({ kind }) => {
-    const value = state.selectedIds[kind];
-    if (value) inputs.push({ name: kind, value });
-  });
-  if (state.sort !== "release-year")
-    inputs.push({ name: "sort", value: state.sort });
-  if (state.sort !== "release-year" && state.dir === "desc")
-    inputs.push({ name: "dir", value: state.dir });
-  if (state.sort === "release-year" && state.dir !== "desc")
-    inputs.push({ name: "dir", value: state.dir });
-  if (state.showSparseRows) inputs.push({ name: "show-sparse", value: "1" });
-  if (state.kind === "case" && state.caseVolumeTier) {
-    inputs.push({ name: "case-volume", value: state.caseVolumeTier });
-  }
-  if (state.kind === "case" && state.caseIntent) {
-    inputs.push({ name: "case-intent", value: state.caseIntent });
-  }
-  if (state.kind === "psu" && state.psuTier) {
-    inputs.push({ name: "psu-tier", value: state.psuTier });
-  }
-  if (state.kind === "psu" && state.psuFormFactor) {
-    inputs.push({ name: "psu-form", value: state.psuFormFactor });
-  }
-  if (state.kind === "psu") {
-    state.psuFeatures.forEach((feature) => {
-      inputs.push({ name: "psu-feature", value: feature });
-    });
-  }
-  numericFilterInputs(state).forEach((input) => inputs.push(input));
-  return inputs;
-}
-
-function numericFilterInputs(state: BuildQueryState) {
+  const params = buildSearchParams(state);
+  params.delete("search");
+  params.delete("page");
   const inputs: Array<{ name: string; value: string }> = [];
-  for (const [paramName, value] of Object.entries(state.numericFilters)) {
-    if (value !== null && value !== undefined) {
-      inputs.push({ name: paramName, value: formatQueryNumber(value) });
-    }
-  }
+  params.forEach((value, name) => inputs.push({ name, value }));
   return inputs;
 }
 
@@ -3453,12 +3423,6 @@ function gpuIssueCellIndex(code: string) {
   if (code.includes("gpuThicknessMm")) return 3;
   if (code.includes("pcieSlots")) return 4;
   return undefined;
-}
-
-function formatQueryNumber(value: number) {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(1).replace(/\.0$/, "");
 }
 
 function emptyToDash(value: string) {

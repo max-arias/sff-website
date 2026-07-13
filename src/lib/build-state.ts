@@ -245,7 +245,17 @@ export function parseBuildQuery(url: URL): BuildQueryState {
   };
 }
 
-export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
+/**
+ * Canonical helper that builds URLSearchParams from BuildQueryState.
+ *
+ * Every query parameter that parseBuildQuery reads is written here.
+ * buildUrl and searchHiddenInputs both derive from this single helper,
+ * eliminating the risk of param drift.
+ */
+export function buildSearchParams(
+  state: BuildQueryState,
+  patch: BuildQueryPatch = {},
+): URLSearchParams {
   const selectedIds = { ...state.selectedIds, ...(patch.selectedIds ?? {}) };
   if (patch.clearSlot) delete selectedIds[patch.clearSlot];
 
@@ -302,6 +312,11 @@ export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
   }
   if (page > 1) params.set("page", String(page));
 
+  return params;
+}
+
+export function buildUrl(state: BuildQueryState, patch: BuildQueryPatch = {}) {
+  const params = buildSearchParams(state, patch);
   const suffix = params.toString();
   return suffix ? `/build?${suffix}` : "/build";
 }
