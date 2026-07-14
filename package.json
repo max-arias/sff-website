@@ -26,7 +26,8 @@
     "intake": "tsx scripts/intake.ts",
     "intake:audit": "tsx scripts/audit-sff-workbook.ts",
     "intake:enrich": "tsx scripts/enrich-psu-tiers.ts",
-    "intake:sql": "tsx scripts/intake.ts --sql-only"
+    "intake:sql": "tsx scripts/intake.ts --sql-only",
+    "scrape:case-images": "tsx scripts/scrape-case-images.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.0",
