@@ -30,6 +30,7 @@ function emptyState(): BuildQueryState {
     showSparseRows: false,
     caseVolumeTier: null,
     caseIntent: null,
+    gpuBrand: null,
     numericFilters: {},
     psuTier: null,
     psuFormFactor: null,
@@ -320,6 +321,17 @@ test("buildSearchParams includes search when non-empty", () => {
   const state = { ...emptyState(), search: "noctua" };
   const params = buildSearchParams(state);
   assert.equal(params.get("search"), "noctua");
+});
+
+test("GPU brand is replayable and is cleaned up outside the GPU table", () => {
+  const state = { ...emptyState(), kind: "gpu" as const, gpuBrand: "PNY", page: 4 };
+  const params = buildSearchParams(state, { resetPage: true });
+  assert.equal(params.get("gpu-brand"), "PNY");
+  assert.equal(params.get("page"), null);
+
+  const reparsed = parseBuildQuery(new URL(`/build?${params}`, "http://localhost"));
+  assert.equal(reparsed.gpuBrand, "PNY");
+  assert.equal(buildSearchParams(state, { kind: "case" }).get("gpu-brand"), null);
 });
 
 test("buildSearchParams omits search when empty", () => {

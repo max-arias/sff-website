@@ -1937,7 +1937,7 @@ export async function getBuildView(
     searchAction: "/build",
     hiddenInputs: searchHiddenInputs(state),
     numericFilters: viewNumericFilters,
-    numericFilterGroups: groupNumericFilters(state, viewNumericFilters),
+    numericFilterGroups: groupNumericFilters(state, viewNumericFilters, parts.gpus),
     clearFiltersUrl: buildUrl(state, {
       numericFilters: {},
       caseVolumeTier: null,
@@ -1945,6 +1945,7 @@ export async function getBuildView(
       psuTier: null,
       psuFormFactor: null,
       psuFeatures: [],
+      gpuBrand: null,
       resetPage: true,
     }),
     tableHeaders: tableHeaders(state),
@@ -1986,7 +1987,7 @@ async function loadCandidates(
       : pool;
     const narrowed = applyCaseIntentFilter(
       applyCaseVolumeTierFilter(
-        applyNumericFilters(filtered, state, metricDefs),
+        applyGpuBrandFilter(applyNumericFilters(filtered, state, metricDefs), state),
         state,
       ),
       state,
@@ -2056,6 +2057,14 @@ function applyNumericFilters(
       const value = def.numericFilter!.rawValue(part);
       return value !== null && value !== undefined && value <= max;
     }),
+  );
+}
+
+function applyGpuBrandFilter(parts: PartRecord[], state: BuildQueryState) {
+  if (state.kind !== "gpu" || !state.gpuBrand) return parts;
+  const brand = state.gpuBrand.trim().toLocaleLowerCase();
+  return parts.filter(
+    (part) => isGpuPart(part) && part.brand.trim().toLocaleLowerCase() === brand,
   );
 }
 
@@ -2247,8 +2256,8 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     actionUrl: selected
       ? buildUrl(ctx.state, { clearSlot: kind, resetPage: true })
       : buildUrl(ctx.state, {
+          kind: nextTabKind(ctx.state.kind),
           selectedIds: { [kind]: part.id },
-          search: "",
           resetPage: true,
         }),
     releaseYear: partReleaseYear(part),
@@ -2469,8 +2478,10 @@ function makeNumericFilter(
 function groupNumericFilters(
   state: BuildQueryState,
   filters: BuildViewNumericFilter[],
+  gpuParts: GpuPart[],
 ): BuildViewNumericFilterGroup[] {
   const map = new Map<string, BuildViewNumericFilter[]>();
+  if (state.kind === "gpu") map.set("Brand", []);
   if (state.kind === "psu") {
     for (const group of PSU_FILTER_GROUP_ORDER) map.set(group, []);
   }
@@ -2480,7 +2491,7 @@ function groupNumericFilters(
     map.set(filter.group, list);
   }
   return Array.from(map.entries()).flatMap(([label, groupFilters]) => {
-    const options = filterOptionsForGroup(state, label);
+    const options = filterOptionsForGroup(state, label, gpuParts);
     if (groupFilters.length === 0 && options.length === 0) return [];
     const active = groupFilters.filter((f) => f.active);
     const activeOptions = options.filter((option) => option.active);
@@ -2503,7 +2514,24 @@ function groupNumericFilters(
 function filterOptionsForGroup(
   state: BuildQueryState,
   group: string,
+  gpuParts: GpuPart[],
 ): BuildViewFilterOption[] {
+  if (state.kind === "gpu" && group === "Brand") {
+    const brands = [...new Map(
+      gpuParts
+        .map((part) => part.brand.trim())
+        .filter(Boolean)
+        .map((brand) => [brand.toLocaleLowerCase(), brand] as const),
+    ).values()].sort((a, b) => a.localeCompare(b));
+    return brands.map((brand) => ({
+      label: brand,
+      href: buildUrl(state, {
+        gpuBrand: state.gpuBrand === brand ? null : brand,
+        resetPage: true,
+      }),
+      active: state.gpuBrand?.toLocaleLowerCase() === brand.toLocaleLowerCase(),
+    }));
+  }
   if (state.kind === "psu") return psuFilterOptionsForGroup(state, group);
   if (state.kind !== "case" || group !== "Dimensions") return [];
   const options: BuildViewFilterOption[] = CASE_VOLUME_TIERS.map((tier) => ({
@@ -2569,6 +2597,11 @@ function psuFilterOptionsForGroup(
     });
   }
   return [];
+}
+
+function nextTabKind(kind: SelectableKind): SelectableKind {
+  const index = tabOrder.indexOf(kind);
+  return tabOrder[(index + 1) % tabOrder.length];
 }
 
 function tableHeaders(state: BuildQueryState): BuildViewTableHeader[] {
@@ -2773,6 +2806,14 @@ function buildFilterChips(
     chips.push({
       label: intent?.label ?? state.caseIntent,
       href: buildUrl(state, { caseIntent: null, resetPage: true }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "gpu" && state.gpuBrand) {
+    chips.push({
+      label: `Brand: ${state.gpuBrand}`,
+      href: buildUrl(state, { gpuBrand: null, resetPage: true }),
       tone: "active",
     });
   }

@@ -198,6 +198,50 @@ test("getBuildView with GPU kind", async () => {
   assert.equal(view.rows[0].title, "RTX 4090 GPU A");
 });
 
+test("GPU brand filter exposes catalog brands and narrows rows", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [],
+    gpus: [
+      fakeGpu({ id: "pny", name: "PNY card", brand: "PNY" }),
+      fakeGpu({ id: "asus", name: "ASUS card", brand: "ASUS" }),
+    ],
+    parts: [],
+  });
+  const view = await getBuildView(
+    emptyContext,
+    new URL("http://localhost/build?kind=gpu&gpu-brand=PNY&page=1"),
+    store,
+  );
+
+  assert.deepEqual(view.rows.map((row) => row.id), ["pny"]);
+  const brandGroup = view.numericFilterGroups.find((group) => group.label === "Brand");
+  assert.ok(brandGroup, "brand filter group exists");
+  assert.deepEqual(brandGroup!.options.map((option) => option.label), ["ASUS", "PNY"]);
+  assert.equal(brandGroup!.options.find((option) => option.label === "PNY")!.active, true);
+  assert.doesNotMatch(brandGroup!.options.find((option) => option.label === "PNY")!.href, /gpu-brand/);
+  assert.match(brandGroup!.options.find((option) => option.label === "ASUS")!.href, /gpu-brand=ASUS/);
+  assert.equal(view.state.page, 1, "page one is the reset target for a filter link");
+});
+
+test("adding or swapping a table row advances to the next tab, but removing does not", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "case-a" })],
+    gpus: [fakeGpu({ id: "gpu-a" })],
+    parts: [],
+  });
+  const addView = await getBuildView(emptyContext, new URL("http://localhost/build?kind=case"), store);
+  assert.match(addView.rows[0].actionUrl, /kind=gpu/);
+  assert.match(addView.rows[0].actionUrl, /case=case-a/);
+
+  const removeView = await getBuildView(
+    emptyContext,
+    new URL("http://localhost/build?kind=case&case=case-a"),
+    store,
+  );
+  assert.match(removeView.rows[0].actionUrl, /kind=case/);
+  assert.doesNotMatch(removeView.rows[0].actionUrl, /kind=gpu/);
+});
+
 test("getBuildView with selected parts produces slots with verdicts", async () => {
   const casePart = fakeCase({ id: "selected-case" });
   const gpuPart = fakeGpu({ id: "selected-gpu" });

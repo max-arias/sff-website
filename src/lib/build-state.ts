@@ -19,6 +19,7 @@ export interface BuildQueryState {
   showSparseRows: boolean;
   caseVolumeTier: CaseVolumeTier | null;
   caseIntent: CaseIntent | null;
+  gpuBrand: string | null;
   /** Generic numeric max filters keyed by query param name (e.g. "case-max-volume-l", "max-gpu-length-mm") */
   numericFilters: Record<string, number>;
   psuTier: PsuTierFilter | null;
@@ -57,6 +58,7 @@ export type BuildQueryPatch = Partial<{
   showSparseRows: boolean;
   caseVolumeTier: CaseVolumeTier | null;
   caseIntent: CaseIntent | null;
+  gpuBrand: string | null;
   numericFilters: Record<string, number>;
   psuTier: PsuTierFilter | null;
   psuFormFactor: PsuFormFactorFilter | null;
@@ -140,6 +142,7 @@ export function parseBuildQuery(url: URL): BuildQueryState {
     showSparseRows: url.searchParams.get("show-sparse") === "1",
     caseVolumeTier: sanitizeCaseVolumeTier(url.searchParams.get("case-volume")),
     caseIntent: sanitizeCaseIntent(url.searchParams.get("case-intent")),
+    gpuBrand: sanitizeGpuBrand(url.searchParams.get("gpu-brand")),
     numericFilters: parseNumericFilters(url),
     psuTier: sanitizePsuTier(url.searchParams.get("psu-tier")),
     psuFormFactor: sanitizePsuFormFactor(url.searchParams.get("psu-form")),
@@ -173,6 +176,7 @@ export function buildSearchParams(
       : state.caseVolumeTier;
   const caseIntent =
     patch.caseIntent !== undefined ? patch.caseIntent : state.caseIntent;
+  const gpuBrand = patch.gpuBrand !== undefined ? patch.gpuBrand : state.gpuBrand;
   const numericFilters =
     patch.numericFilters !== undefined
       ? patch.numericFilters
@@ -202,6 +206,7 @@ export function buildSearchParams(
   if (showSparseRows) params.set("show-sparse", "1");
   if (kind === "case" && caseVolumeTier) params.set("case-volume", caseVolumeTier);
   if (kind === "case" && caseIntent) params.set("case-intent", caseIntent);
+  if (kind === "gpu" && gpuBrand) params.set("gpu-brand", gpuBrand);
   if (kind === "psu" && psuTier) params.set("psu-tier", psuTier);
   if (kind === "psu" && psuFormFactor) params.set("psu-form", psuFormFactor);
   if (kind === "psu") {
@@ -242,6 +247,11 @@ function sanitizeCaseVolumeTier(value: string | null): CaseVolumeTier | null {
 
 function sanitizeCaseIntent(value: string | null): CaseIntent | null {
   return value === "steam-machine" ? value : null;
+}
+
+function sanitizeGpuBrand(value: string | null): string | null {
+  const normalized = value?.trim() ?? "";
+  return normalized ? normalized : null;
 }
 
 function sanitizePsuTier(value: string | null): PsuTierFilter | null {
