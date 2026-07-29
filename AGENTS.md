@@ -52,3 +52,17 @@ Read these files before making product or UX changes:
 
 - V1 contribution intake is via GitHub issues plus manual review.
 - Do not assume wiki-style direct editing exists in the shipped product.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues; external pull requests are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the standard triage label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using the root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.

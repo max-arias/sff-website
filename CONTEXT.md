@@ -184,6 +184,10 @@ _Avoid_: Locked recommendation filter, forced constraint mode
 A visual treatment inside a filter control that shows the physical boundary implied by the current build, including hard-fail regions and conditional caution zones.
 _Avoid_: Hidden envelope, text-only limit cue
 
+**Clearance Allocation**:
+The GPU-side and CPU-cooler-side space split in a sandwich case. With the current catalog fields, its shared cross-section is the case's maximum GPU width plus its maximum CPU cooler height. A selected GPU consumes its actual GPU width and leaves the remainder for the CPU cooler; a selected CPU cooler consumes its actual height and leaves the remainder for the GPU.
+_Avoid_: Independent maxima that are simultaneously assumed, unexplained generic layout warning
+
 **Verdict Row State**:
 The visual treatment of a candidate row in the table based on its fitment outcome, such as neutral for `pass`, amber for `conditional`, and red for `fail`.
 _Avoid_: Uniform rows, hidden risk state
