@@ -165,7 +165,9 @@ export function buildSearchParams(
   if (patch.clearSlot) delete selectedIds[patch.clearSlot];
 
   const kind = patch.kind ?? state.kind;
-  const search = patch.search ?? state.search;
+  const search = patch.kind !== undefined && patch.kind !== state.kind
+    ? ""
+    : (patch.search ?? state.search);
   const page = patch.resetPage ? 1 : (patch.page ?? state.page);
   const sort = patch.sort ?? state.sort;
   const dir = patch.dir ?? state.dir;

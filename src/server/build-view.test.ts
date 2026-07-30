@@ -282,6 +282,72 @@ test("getBuildView with case+GPU selection shows build status", async () => {
   );
 });
 
+test("riser advisory is omitted from GPU candidates until a GPU is selected", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({
+      id: "c",
+      gpuRiser: "Y",
+      dimensions: { ...fakeCase().dimensions, gpuLengthMm: null },
+    })],
+    gpus: [fakeGpu({ id: "g" }), fakeGpu({ id: "g2", name: "Second GPU" })],
+    parts: [],
+  });
+  const view = await getBuildView(
+    emptyContext,
+    new URL("http://localhost/build?kind=gpu&case=c"),
+    store,
+  );
+
+  assert.ok(view.rows.length > 0);
+  assert.ok(view.rows.every((row) => !row.note.includes("requires a GPU riser")));
+  assert.equal(
+    view.rows.find((row) => row.id === "g")?.cells[1].evidenceVerdict,
+    "conditional",
+    "dimensional GPU evidence remains visible",
+  );
+  assert.ok(
+    !view.buildIssues.some((section) =>
+      section.issues.some((issue) => issue.includes("requires a GPU riser")),
+    ),
+  );
+});
+
+test("selected case and GPU retain the riser advisory in Build Issues", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c", gpuRiser: "Y" })],
+    gpus: [fakeGpu({ id: "g" })],
+    parts: [],
+  });
+  const view = await getBuildView(
+    emptyContext,
+    new URL("http://localhost/build?kind=gpu&case=c&gpu=g"),
+    store,
+  );
+
+  assert.ok(
+    view.buildIssues.some((section) =>
+      section.issues.includes("This case requires a GPU riser."),
+    ),
+  );
+  const riserSections = view.buildIssues.filter((section) =>
+    section.issues.includes("This case requires a GPU riser."),
+  );
+  assert.deepEqual(
+    riserSections.map((section) => section.kind).sort(),
+    ["case", "gpu"],
+  );
+  assert.equal(
+    riserSections.reduce(
+      (count, section) =>
+        count + section.issues.filter((issue) => issue === "This case requires a GPU riser.").length,
+      0,
+    ),
+    2,
+    "one riser advisory per selected case/GPU slot",
+  );
+  assert.equal(view.buildStatus, "conditional");
+});
+
 // ---------------------------------------------------------------------------
 // Cell-level evidence tests
 // ---------------------------------------------------------------------------

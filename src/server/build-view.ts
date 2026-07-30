@@ -16,6 +16,7 @@ import {
 import type { CasePart, FitVerdict, GenericPart, GpuPart } from "../types";
 import type { CatalogStore } from "./catalog-store";
 import {
+  evaluateBuildFitment as engineEvaluateBuildFitment,
   evaluateCandidateFitment as engineEvaluateCandidateFitment,
   type BuildContext,
 } from "../fitment/engine";
@@ -2230,7 +2231,9 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
   const kind = part.kind as SelectableKind;
   const selected = ctx.state.selectedIds[kind] === part.id;
   const hasSelection = Boolean(ctx.state.selectedIds[kind]);
-  const fitment = evaluateCandidateFitment(ctx, part);
+  const fitment = evaluateCandidateFitment(ctx, part, {
+    omitRiserAdvisory: true,
+  });
   const note = fitment.messages[0] || fitment.notes[0] || fallbackNote(part);
   const cells = buildViewCells(part, fitment.cellEvidence);
   const metricLabels = tableHeaderLabels(ctx.state.kind).slice(1, -2);
@@ -2386,6 +2389,31 @@ function buildIssues(
       });
     }
   });
+
+  // This advisory is meaningful only for the fully selected case/GPU
+  // relationship. Merge it into the existing slot sections so it cannot
+  // create duplicate sections or duplicate messages.
+  if (ctx.activeCase && ctx.activeGpu) {
+    const riserIssue = engineEvaluateBuildFitment(buildContext(ctx)).evidence.find(
+      (e) => e.code === "requires-riser",
+    );
+    if (riserIssue) {
+      for (const kind of ["case", "gpu"] as const) {
+        const existing = sections.find((section) => section.kind === kind);
+        if (existing) {
+          if (!existing.issues.includes(riserIssue.message)) {
+            existing.issues.push(riserIssue.message);
+          }
+        } else {
+          sections.push({
+            kind,
+            label: slotOrder.find((slot) => slot.kind === kind)!.label,
+            issues: [riserIssue.message],
+          });
+        }
+      }
+    }
+  }
 
   return sections;
 }
@@ -2946,8 +2974,20 @@ function fallbackNote(part: PartRecord) {
 function evaluateCandidateFitment(
   ctx: EvalContext,
   part: PartRecord,
+  options: { omitRiserAdvisory?: boolean } = {},
 ): FitmentSummary {
-  const build: BuildContext = {
+  const build = buildContext(ctx);
+  const decision = engineEvaluateCandidateFitment(build, part as any);
+  if (options.omitRiserAdvisory && part.kind === "gpu") {
+    decision.evidence = decision.evidence.filter(
+      (e) => e.code !== "requires-riser",
+    );
+  }
+  return engineDecisionToSummary(decision);
+}
+
+function buildContext(ctx: EvalContext): BuildContext {
+  return {
     activeCase: ctx.activeCase,
     activeGpu: ctx.activeGpu,
     activeCpuCooler: ctx.activeCpuCooler,
@@ -2955,8 +2995,6 @@ function evaluateCandidateFitment(
     activeMotherboard: ctx.activeMotherboard,
     activeRam: ctx.activeRam,
   };
-  const decision = engineEvaluateCandidateFitment(build, part as any);
-  return engineDecisionToSummary(decision);
 }
 
 function engineDecisionToSummary(

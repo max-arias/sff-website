@@ -323,6 +323,14 @@ test("buildSearchParams includes search when non-empty", () => {
   assert.equal(params.get("search"), "noctua");
 });
 
+test("buildSearchParams clears kind-scoped search when switching tabs", () => {
+  const state = { ...emptyState(), kind: "case" as const, search: "thor" };
+  const params = buildSearchParams(state, { kind: "gpu", resetPage: true });
+
+  assert.equal(params.get("kind"), "gpu");
+  assert.equal(params.get("search"), null);
+});
+
 test("GPU brand is replayable and is cleaned up outside the GPU table", () => {
   const state = { ...emptyState(), kind: "gpu" as const, gpuBrand: "PNY", page: 4 };
   const params = buildSearchParams(state, { resetPage: true });
