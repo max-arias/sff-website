@@ -2,8 +2,6 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { getBuildView } from "../server/build-view";
 import { buildUrl } from "../lib/build-state";
-Astro.response.headers.set("Cache-Control", "public, max-age=0, s-maxage=3600");
-Astro.response.headers.set("Cache-Tag", "sff-catalog");
 
 
 const view = await getBuildView(Astro, Astro.url);

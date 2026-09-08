@@ -78,40 +78,45 @@ function requireDb() {
 }
 
 const CATALOG_CACHE_TTL_SECONDS = 60 * 60;
-const CATALOG_CACHE_ORIGIN = "https://sff-catalog-cache.internal";
+
+type CatalogBindings = { CATALOG_CACHE?: KVNamespace };
+// Astro's generated cloudflare:workers type does not include custom bindings.
+const catalogBindings = env as unknown as CatalogBindings;
 
 /**
  * The catalog is public and changes only through the deployment pipeline.
- * Cache its read-heavy query results at the edge instead of scanning D1 for
- * every rendered build view.
+ * Workers KV is the durable cache layer because this Worker is served from a
+ * workers.dev hostname, where zone Cache Rules do not apply.
  */
 async function cachedCatalogValue<T>(
   key: string,
   load: () => Promise<T>,
 ): Promise<T> {
-  const cache = await caches.open("sff-catalog");
-  const request = new Request(`${CATALOG_CACHE_ORIGIN}/${key}`);
+  const cache = catalogBindings.CATALOG_CACHE;
+  const cacheKey = `catalog:v2:${key}`;
 
-  try {
-    const cached = await cache.match(request);
-    if (cached) return (await cached.json()) as T;
-  } catch {
-    // Cache availability must not prevent the catalog from serving from D1.
+  if (cache) {
+    try {
+      const cached = await cache.get<T>(cacheKey, {
+        type: "json",
+        cacheTtl: CATALOG_CACHE_TTL_SECONDS,
+      });
+      if (cached !== null) return cached;
+    } catch {
+      // KV availability must not prevent the catalog from serving from D1.
+    }
   }
 
   const value = await load();
-  const response = new Response(JSON.stringify(value), {
-    headers: {
-      "Cache-Control": `public, max-age=0, s-maxage=${CATALOG_CACHE_TTL_SECONDS}`,
-      "Cache-Tag": "sff-catalog",
-      "Content-Type": "application/json",
-    },
-  });
 
-  try {
-    await cache.put(request, response);
-  } catch {
-    // A cache write may fail for an individual data center or oversized value.
+  if (cache) {
+    try {
+      await cache.put(cacheKey, JSON.stringify(value), {
+        expirationTtl: CATALOG_CACHE_TTL_SECONDS,
+      });
+    } catch {
+      // A cache write may fail without affecting the current response.
+    }
   }
 
   return value;

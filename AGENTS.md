@@ -46,12 +46,12 @@ Read these files before making product or UX changes:
 
 ## D1 Read Budget
 
-- The public catalog is immutable between data deployments. Route high-volume reads through the catalog edge cache; keep its `sff-catalog` cache tag and one-hour freshness policy intact.
+- The public catalog is immutable between data deployments. This app is served from a workers.dev Worker URL, so zone Cache Rules do not apply; route high-volume catalog reads through the `CATALOG_CACHE` KV binding instead.
 - Catalog changes must preserve indexed, bounded queries. Do not restore whole-table reads, worker-side catalog scans, or per-request aggregate counts on `/build` or API hot paths.
 - Autocomplete uses `catalog_search` trigram FTS. Require at least three normalized characters and query that index; do not load catalog tables into the Worker to rank suggestions.
 - For every new or changed D1 query, run `EXPLAIN QUERY PLAN` against local D1. A hot query needs an indexed `SEARCH`/FTS plan or an explicit bounded reason to scan.
 - Add supporting indexes and run `PRAGMA optimize` in a forward D1 migration. Verify the migration locally before deployment.
-- After an independent catalog data change, purge the `sff-catalog` cache tag if freshness cannot wait one hour.
+- After an independent catalog data change, purge the corresponding `CATALOG_CACHE` KV keys or deploy a cache-version change; `sff-catalog` response tags do not purge KV.
 
 ## Local Development
 
