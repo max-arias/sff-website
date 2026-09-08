@@ -21,6 +21,8 @@ export type AvailabilityStatus = "available" | "unavailable";
 
 export type FitVerdict = "pass" | "fail" | "conditional";
 
+export type RawScalar = string | number | boolean | null;
+
 export interface RawSheetRow {
   sourceSheet: string;
   rowNumber: number;
@@ -44,7 +46,7 @@ export interface GenericPart {
   dimensions: Record<string, number>;
   releaseYear: number | null;
   flags: string[];
-  raw: Record<string, string>;
+  raw: Record<string, RawScalar>;
   links: Record<string, string>;
 }
 
@@ -152,7 +154,7 @@ export interface CasePart {
   priceUsd: number | null;
   releaseYear: number | null;
   flags: string[];
-  raw: Record<string, string>;
+  raw: Record<string, RawScalar>;
 }
 
 export interface GpuPart {
@@ -186,10 +188,40 @@ export interface GpuPart {
   };
   releaseYear: number | null;
   flags: string[];
-  raw: Record<string, string>;
+  raw: Record<string, RawScalar>;
 }
 
 export type SffPart = CasePart | GpuPart;
+
+/** The closed set of kinds that may be selected in the build. */
+export type SelectableKind =
+  | "case"
+  | "gpu"
+  | "cpu-cooler"
+  | "motherboard"
+  | "psu"
+  | "ram";
+
+export type GenericPartForKind<K extends Exclude<SelectableKind, "case" | "gpu">> =
+  GenericPart & { kind: K };
+
+export interface SelectablePartByKind {
+  case: CasePart;
+  gpu: GpuPart;
+  "cpu-cooler": GenericPartForKind<"cpu-cooler">;
+  motherboard: GenericPartForKind<"motherboard">;
+  psu: GenericPartForKind<"psu">;
+  ram: GenericPartForKind<"ram">;
+}
+
+export type SelectablePart = SelectablePartByKind[SelectableKind];
+
+/** A selected catalog reference that could not be resolved yet. */
+export interface UnresolvedSelectedPart {
+  status: "unresolved";
+  kind: SelectableKind;
+  id: string;
+}
 
 export interface IntakeResult {
   generatedAt: string;

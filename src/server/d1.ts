@@ -1,10 +1,7 @@
 import { env } from "cloudflare:workers";
-import type { AvailabilityStatus, CasePart, GenericPart, GpuPart, PartKind } from "../types";
-import {
-  fuseSearchRows,
-  rowSearchText,
-  type CatalogSearchRow,
-} from "./catalog-search";
+import { normalizeSearchText } from "../lib/search-normalization";
+import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
+import { decodeCatalogRow } from "./d1-decoders";
 
 interface D1Result<T> {
   results?: T[];
@@ -62,12 +59,6 @@ function kindToTable(kind: string): string | null {
   return TABLE_MAP[kind] ?? null;
 }
 
-function availabilityStatusFromRow(value: unknown): AvailabilityStatus {
-  return String(value ?? "available") === "unavailable"
-    ? "unavailable"
-    : "available";
-}
-
 // ---------------------------------------------------------------------------
 // DB helpers
 // ---------------------------------------------------------------------------
@@ -86,173 +77,44 @@ function requireDb() {
   return db;
 }
 
-// ---------------------------------------------------------------------------
-// Row mappers
-// ---------------------------------------------------------------------------
+const CATALOG_CACHE_TTL_SECONDS = 60 * 60;
+const CATALOG_CACHE_ORIGIN = "https://sff-catalog-cache.internal";
 
-function rowToCase(row: Record<string, unknown>): CasePart {
-  return {
-    kind: "case",
-    id: String(row.id),
-    sourceSheet: String(row.source_sheet ?? ""),
-    rowNumber: Number(row.source_row_number ?? 0),
-    seller: String(row.seller ?? ""),
-    name: String(row.name ?? ""),
-    style: String(row.style ?? ""),
-    sidePanel: String(row.side_panel ?? ""),
-    caseMaterial: String(row.case_material ?? ""),
-    status: String(row.status ?? ""),
-    availabilityStatus: availabilityStatusFromRow(row.availability_status),
-    gpuRiser: String(row.gpu_riser ?? ""),
-    psu: String(row.psu ?? ""),
-    motherboard: String(row.motherboard ?? ""),
-    radiatorSupportRaw: String(row.radiator_support_raw ?? ""),
-    sffNetLink: String(row.sff_net_link ?? ""),
-    lastUpdate: String(row.last_update ?? ""),
-    dimensions: {
-      lengthMm: nullableNumber(row.length_mm),
-      widthMm: nullableNumber(row.width_mm),
-      heightMm: nullableNumber(row.height_mm),
-      volumeL: nullableNumber(row.volume_l),
-      footprintCm2: nullableNumber(row.footprint_cm2),
-      weightKg: nullableNumber(row.weight_kg),
-      cpuCoolerHeightMm: nullableNumber(row.cpu_cooler_height_mm),
-      gpuLengthMm: nullableNumber(row.gpu_length_mm),
-      gpuWidthMm: nullableNumber(row.gpu_width_mm),
-      gpuThicknessMm: nullableNumber(row.gpu_height_mm),
-      pcieSlots: nullableNumber(row.pcie_slots),
-      lpPcieSlots: nullableNumber(row.lp_pcie_slots),
-    },
-    counts: {
-      drive25Max: nullableNumber(row.drive_2_5_max),
-      drive35Max: nullableNumber(row.drive_3_5_max),
-      drive525Max: nullableNumber(row.drive_5_25_max),
-      fan40mm: nullableNumber(row.fan_40mm_count),
-      fan60mm: nullableNumber(row.fan_60mm_count),
-      fan80mm: nullableNumber(row.fan_80mm_count),
-      fan92mm: nullableNumber(row.fan_92mm_count),
-      fan120mm: nullableNumber(row.fan_120mm_count),
-      fan140mm: nullableNumber(row.fan_140mm_count),
-      fan180mm: nullableNumber(row.fan_180mm_count),
-      fan200mm: nullableNumber(row.fan_200mm_count),
-      usbA20: nullableNumber(row.usb_a_2_0_count),
-      usbA32: nullableNumber(row.usb_a_3_2_count),
-      usbC: nullableNumber(row.usb_c_count),
-    },
-    radiatorFlags: {
-      has120mm: booleanish(row.radiator_120mm),
-      has140mm: booleanish(row.radiator_140mm),
-      has200mm: booleanish(row.radiator_200mm),
-      has240mm: booleanish(row.radiator_240mm),
-      has280mm: booleanish(row.radiator_280mm),
-      has360mm: booleanish(row.radiator_360mm),
-      has420mm: booleanish(row.radiator_420mm),
-      hasTopHat: booleanish(row.radiator_top_hat),
-    },
-    hasJack35mm: booleanish(row.jack_3_5mm),
-    priceCny: nullableNumber(row.price_cny),
-    priceUsd: nullableNumber(row.price_usd),
-    releaseYear: null,
-    flags: [],
-    raw: {},
-  };
-}
+/**
+ * The catalog is public and changes only through the deployment pipeline.
+ * Cache its read-heavy query results at the edge instead of scanning D1 for
+ * every rendered build view.
+ */
+async function cachedCatalogValue<T>(
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const cache = await caches.open("sff-catalog");
+  const request = new Request(`${CATALOG_CACHE_ORIGIN}/${key}`);
 
-function rowToGpu(row: Record<string, unknown>): GpuPart {
-  return {
-    kind: "gpu",
-    id: String(row.id),
-    sourceSheet: String(row.source_sheet ?? ""),
-    rowNumber: Number(row.source_row_number ?? 0),
-    chipset: String(row.chipset ?? ""),
-    model: String(row.model ?? ""),
-    brand: String(row.brand ?? ""),
-    name: String(row.name ?? ""),
-    lowProfile: booleanish(row.low_profile),
-    watercooled: booleanish(row.watercooled),
-    blower: booleanish(row.blower),
-    pciePins: String(row.pcie_pins ?? ""),
-    tdpW: nullableNumber(row.tdp_w),
-    boostClockMhz: nullableNumber(row.boost_clock_mhz),
-    memorySpeedGbps: nullableNumber(row.memory_speed_gbps),
-    fanCount: nullableNumber(row.fan_count),
-    displayportCount: nullableNumber(row.displayport_count),
-    hdmiCount: nullableNumber(row.hdmi_count),
-    usbCCount: nullableNumber(row.usb_c_count),
-    dviD: booleanish(row.dvi_d),
-    remarks: String(row.remarks ?? ""),
-    availabilityStatus: availabilityStatusFromRow(row.availability_status),
-    dimensions: {
-      lengthMm: nullableNumber(row.length_mm),
-      widthMm: nullableNumber(row.width_mm),
-      thicknessMm: nullableNumber(row.thickness_mm),
-      pcieSlots: nullableNumber(row.pcie_bracket),
-    },
-    releaseYear: null,
-    flags: [],
-    raw: {},
-  };
-}
-
-function rowToGenericPart(
-  row: Record<string, unknown>,
-  kind: PartKind,
-): GenericPart {
-  const specs: Record<string, string> = {};
-  const dimensions: Record<string, number> = {};
-
-  // Copy all non-null values to specs/dimensions for generic access
-  for (const [key, value] of Object.entries(row)) {
-    if (
-      value === null ||
-      value === undefined ||
-      key === "id" ||
-      key === "created_at" ||
-      key === "updated_at" ||
-      key === "status" ||
-      key === "availability_status"
-    )
-      continue;
-    if (typeof value === "number" && Number.isFinite(value)) {
-      dimensions[key] = value;
-      // Also store under a stripped key so lookups without _mm/_w/_g/_count etc. suffixes work
-      const stripped = key.replace(
-        /_(mm|w|g|count|rpm|cfm|dba|gbps|mhz|mbps|v|a|kg|l|cm2)$/,
-        "",
-      );
-      if (stripped !== key) {
-        dimensions[stripped] = value;
-      }
-    } else if (typeof value === "string" && value !== "") {
-      specs[key] = value;
-    } else if (typeof value === "boolean" || value === 0 || value === 1) {
-      specs[key] = value ? "Y" : "-";
-    }
+  try {
+    const cached = await cache.match(request);
+    if (cached) return (await cached.json()) as T;
+  } catch {
+    // Cache availability must not prevent the catalog from serving from D1.
   }
 
-  return {
-    id: String(row.id ?? ""),
-    kind,
-    sourceSheet: String(row.source_sheet ?? ""),
-    rowNumber: Number(row.source_row_number ?? 0),
-    brand: String(row.brand ?? ""),
-    name: String(row.name ?? row.model ?? ""),
-    displayName: (
-      String(row.brand ?? "") +
-      " " +
-      String(row.name ?? row.model ?? "")
-    ).trim(),
-    status: String(row.status ?? ""),
-    availabilityStatus: availabilityStatusFromRow(row.availability_status),
-    sellerUrl: "",
-    productUrl: "",
-    specs,
-    dimensions,
-    releaseYear: null,
-    flags: [],
-    raw: row as Record<string, string>,
-    links: {},
-  };
+  const value = await load();
+  const response = new Response(JSON.stringify(value), {
+    headers: {
+      "Cache-Control": `public, max-age=0, s-maxage=${CATALOG_CACHE_TTL_SECONDS}`,
+      "Cache-Tag": "sff-catalog",
+      "Content-Type": "application/json",
+    },
+  });
+
+  try {
+    await cache.put(request, response);
+  } catch {
+    // A cache write may fail for an individual data center or oversized value.
+  }
+
+  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,21 +125,28 @@ export async function loadParts(
   event: unknown,
 ): Promise<{ cases: CasePart[]; gpus: GpuPart[]; source: "d1" }> {
   void event;
-  const db = requireDb();
-  const [caseRows, gpuRows] = await Promise.all([
-    db
-      .prepare("select * from cases order by name")
-      .all<Record<string, unknown>>(),
-    db
-      .prepare("select * from gpus order by name")
-      .all<Record<string, unknown>>(),
-  ]);
+  const parts = await cachedCatalogValue("v1/build-parts", async () => {
+    const db = requireDb();
+    const [caseRows, gpuRows] = await Promise.all([
+      db
+        .prepare("select * from cases order by name")
+        .all<Record<string, unknown>>(),
+      db
+        .prepare("select * from gpus order by name")
+        .all<Record<string, unknown>>(),
+    ]);
 
-  return {
-    cases: (caseRows.results ?? []).map(rowToCase),
-    gpus: (gpuRows.results ?? []).map(rowToGpu),
-    source: "d1",
-  };
+    return {
+      cases: (caseRows.results ?? []).map(
+        (row) => decodeCatalogRow(row, "case") as CasePart,
+      ),
+      gpus: (gpuRows.results ?? []).map(
+        (row) => decodeCatalogRow(row, "gpu") as GpuPart,
+      ),
+    };
+  });
+
+  return { ...parts, source: "d1" };
 }
 
 export async function findCaseAndGpu(
@@ -285,11 +154,21 @@ export async function findCaseAndGpu(
   caseId: string,
   gpuId: string,
 ) {
-  const parts = await loadParts(event);
+  void event;
+  const db = requireDb();
+  const [caseRows, gpuRows] = await Promise.all([
+    db.prepare("select * from cases where id = ? limit 1").bind(caseId).all<Record<string, unknown>>(),
+    db.prepare("select * from gpus where id = ? limit 1").bind(gpuId).all<Record<string, unknown>>(),
+  ]);
+
   return {
-    casePart: parts.cases.find((part) => part.id === caseId) ?? null,
-    gpuPart: parts.gpus.find((part) => part.id === gpuId) ?? null,
-    source: parts.source,
+    casePart: caseRows.results?.[0]
+      ? (decodeCatalogRow(caseRows.results[0], "case") as CasePart)
+      : null,
+    gpuPart: gpuRows.results?.[0]
+      ? (decodeCatalogRow(gpuRows.results[0], "gpu") as GpuPart)
+      : null,
+    source: "d1" as const,
   };
 }
 
@@ -301,89 +180,63 @@ export async function searchCatalog(
   event: unknown,
   rawOptions: Partial<CatalogSearchOptions>,
 ) {
-  return searchCatalogRows(event, rawOptions);
-}
-
-async function searchCatalogRows(
-  event: unknown,
-  rawOptions: Partial<CatalogSearchOptions>,
-) {
   void event;
   const options = {
-    query: rawOptions.query?.trim() ?? "",
-    limit: Math.max(1, Math.min(5000, Math.floor(rawOptions.limit ?? 25))),
+    query: normalizeSearchText(rawOptions.query?.trim() ?? ""),
+    limit: Math.max(1, Math.min(100, Math.floor(rawOptions.limit ?? 25))),
     kind:
       rawOptions.kind && rawOptions.kind !== "all"
         ? rawOptions.kind
         : undefined,
-    sourceSheet:
-      rawOptions.sourceSheet && rawOptions.sourceSheet !== "all"
-        ? rawOptions.sourceSheet
-        : undefined,
   };
-  const db = requireDb();
 
-  if (!options.query) {
+  if (options.query.length < 3) {
     return {
       source: "d1" as const,
       suggestions: [] as CatalogSearchSuggestion[],
     };
   }
 
-  // Collect search rows from relevant tables
-  const allRows: CatalogSearchRow[] = [];
-  const tablesToSearch = options.kind
-    ? [TABLE_MAP[options.kind]].filter(Boolean)
-    : Object.values(TABLE_MAP);
+  const db = requireDb();
+  const values: unknown[] = [`%${options.query}%`];
+  const kindClause = options.kind ? "and kind = ?" : "";
+  if (options.kind) values.push(options.kind);
+  values.push(options.query, `${options.query}%`, options.limit);
 
-  for (const table of tablesToSearch) {
-    const cols = searchColumnsForTable(table);
-    const rows = await db
-      .prepare(`select ${cols} from ${table}`)
-      .all<CatalogSearchRow>();
-    allRows.push(...(rows.results ?? []));
-  }
+  const rows = await db
+    .prepare(
+      `select id, kind, display_name, normalized_search_text
+       from catalog_search
+       where normalized_search_text like ? ${kindClause}
+       order by
+         case
+           when normalized_search_text = ? then 0
+           when normalized_search_text like ? then 1
+           else 2
+         end,
+         display_name collate nocase
+       limit ?`,
+    )
+    .bind(...values)
+    .all<{
+      id: string;
+      kind: string;
+      display_name: string;
+      normalized_search_text: string;
+    }>();
 
-  const suggestions = fuseSearchRows(allRows, options.query, options.limit).map(
-    rowSuggestion,
-  );
-  return { source: "d1" as const, suggestions };
-}
-
-function searchColumnsForTable(table: string): string {
-  switch (table) {
-    case "cases":
-      return "id, 'case' as kind, seller, name, style, status";
-    case "gpus":
-      return "id, 'gpu' as kind, brand, name, chipset, model, status";
-    case "cpu_coolers":
-      return "id, 'cpu-cooler' as kind, brand, name, type, status";
-    case "fans":
-      return "id, 'fan' as kind, brand, model, status";
-    case "motherboards":
-      return "id, 'motherboard' as kind, brand, name, cpu, chipset, socket, status";
-    case "psus":
-      return "id, 'psu' as kind, brand, name, form_factor, psu_tier, psu_tier_efficiency, wattage, status";
-    case "ram":
-      return "id, 'ram' as kind, brand, model, memory_type, status";
-    default:
-      return "id";
-  }
-}
-
-function rowSuggestion(
-  row: CatalogSearchRow & { score: number },
-): CatalogSearchSuggestion {
-  const brand = String(row.brand ?? row.seller ?? "");
-  const name = String(row.name ?? row.model ?? "");
+  const results = rows.results ?? [];
   return {
-    id: String(row.id ?? ""),
-    kind: String(row.kind ?? ""),
-    displayName: String(row.display_name ?? (brand + " " + name).trim()),
-    sourceSheet: String(row.source_sheet ?? ""),
-    rowNumber: Number(row.source_row_number ?? 0),
-    score: row.score,
-    match: rowSearchText(row),
+    source: "d1" as const,
+    suggestions: results.map((row, index) => ({
+      id: row.id,
+      kind: row.kind,
+      displayName: row.display_name,
+      sourceSheet: "",
+      rowNumber: 0,
+      score: results.length - index,
+      match: row.normalized_search_text,
+    })),
   };
 }
 
@@ -421,7 +274,7 @@ export async function loadCatalogPartsByIds(event: unknown, ids: string[]) {
       .all<Record<string, unknown>>();
 
     for (const row of rows.results ?? []) {
-      allParts.push(rowToGenericPart(row, tableToKind(table)));
+      allParts.push(decodeCatalogRow(row, tableToKind(table)) as GenericPart);
     }
   }
 
@@ -440,10 +293,7 @@ function tableToKind(table: string): PartKind {
   return (kind as PartKind) ?? "unknown";
 }
 
-export async function loadCatalog(
-  event: unknown,
-  rawOptions: Partial<CatalogQueryOptions> = {},
-): Promise<{
+type CatalogResult = {
   parts: GenericPart[];
   source: "d1";
   summary: {
@@ -457,8 +307,25 @@ export async function loadCatalog(
     pageSize: number;
     pageCount: number;
   };
-}> {
+};
+
+export function loadCatalog(
+  event: unknown,
+  rawOptions: Partial<CatalogQueryOptions> = {},
+): Promise<CatalogResult> {
   const options = clampCatalogOptions(rawOptions);
+  if (options.search) return loadCatalogUncached(event, options);
+
+  return cachedCatalogValue(
+    `v1/catalog/${encodeURIComponent(JSON.stringify(options))}`,
+    () => loadCatalogUncached(event, options),
+  );
+}
+
+async function loadCatalogUncached(
+  event: unknown,
+  options: CatalogQueryOptions,
+): Promise<CatalogResult> {
   const db = requireDb();
   const offset = (options.page - 1) * options.pageSize;
   let parts: GenericPart[] = [];
@@ -477,7 +344,7 @@ export async function loadCatalog(
   }
 
   if (options.search) {
-    const searchResults = await searchCatalogRows(event, {
+    const searchResults = await searchCatalog(event, {
       query: options.search,
       kind: options.kind,
       limit: options.pageSize,
@@ -494,7 +361,7 @@ export async function loadCatalog(
       .prepare(`select * from ${table} ${where} ${orderBy} limit ? offset ?`)
       .bind(...values, options.pageSize, offset)
       .all<Record<string, unknown>>();
-    parts = (rows.results ?? []).map((row) => rowToGenericPart(row, kind));
+    parts = (rows.results ?? []).map((row) => decodeCatalogRow(row, kind) as GenericPart);
     const filteredRows = await db
       .prepare(`select count(*) as count from ${table} ${where}`)
       .bind(...values)
@@ -544,20 +411,6 @@ function buildCatalogWhere(options: CatalogQueryOptions, _table: string) {
     where: clauses.length ? `where ${clauses.join(" and ")}` : "",
     values,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function nullableNumber(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function booleanish(value: unknown) {
-  return value === true || value === 1 || value === "1";
 }
 
 function clampCatalogOptions(

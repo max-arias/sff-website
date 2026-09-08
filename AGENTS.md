@@ -44,6 +44,15 @@ Read these files before making product or UX changes:
 - The catalog is stored in per-kind D1 tables: `cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, and `ram`.
 - Selected part identity should use concrete catalog record IDs from those tables.
 
+## D1 Read Budget
+
+- The public catalog is immutable between data deployments. Route high-volume reads through the catalog edge cache; keep its `sff-catalog` cache tag and one-hour freshness policy intact.
+- Catalog changes must preserve indexed, bounded queries. Do not restore whole-table reads, worker-side catalog scans, or per-request aggregate counts on `/build` or API hot paths.
+- Autocomplete uses `catalog_search` trigram FTS. Require at least three normalized characters and query that index; do not load catalog tables into the Worker to rank suggestions.
+- For every new or changed D1 query, run `EXPLAIN QUERY PLAN` against local D1. A hot query needs an indexed `SEARCH`/FTS plan or an explicit bounded reason to scan.
+- Add supporting indexes and run `PRAGMA optimize` in a forward D1 migration. Verify the migration locally before deployment.
+- After an independent catalog data change, purge the `sff-catalog` cache tag if freshness cannot wait one hour.
+
 ## Local Development
 
 - Do not start the Astro dev server unless the user explicitly asks for it. It is flaky in this workspace; make changes and use static checks, then let the user run and test the app locally.

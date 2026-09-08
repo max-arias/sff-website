@@ -1,6 +1,7 @@
 import type { CasePart, GenericPart, GpuPart, IntakeResult, PsuTierEntry, PsuTierOverride } from "../types";
 import { normalizePsuMatchKey } from "./psu-tier-list";
 import { uniqueSlug } from "./slug";
+import { searchablePartText } from "./search-normalization";
 import {
   dimensionNumber as dim,
   specRaw as spec,
@@ -73,6 +74,8 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
 
   return `insert into cases (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "seller",
     "name",
     "style",
@@ -127,6 +130,8 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(part.brand, part.name, [casePart?.style ?? "", casePart?.motherboard ?? "", casePart?.psu ?? ""])),
+    escapeSql(casePart?.releaseYear ?? part.releaseYear),
     escapeSql(casePart?.seller ?? ""),
     escapeSql(part.name),
     escapeSql(casePart?.style ?? ""),
@@ -145,7 +150,7 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
     escapeSql(cd?.pcieSlots ?? null),
     escapeSql(cd?.lpPcieSlots ?? null),
     escapeSql(casePart?.gpuRiser ?? ""),
-    escapeSql(spec(part, ["motherboard"])),
+    escapeSql(casePart?.motherboard ?? spec(part, ["motherboard"])),
     escapeSql(casePart?.psu ?? ""),
     escapeSql(spec(part, ["radiator_support_raw"])),
     bool(
@@ -221,6 +226,8 @@ export function gpuInsert(runId: string, slug: string, part: GenericPart, gpuPar
 
   return `insert into gpus (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "brand",
     "name",
     "model",
@@ -248,6 +255,8 @@ export function gpuInsert(runId: string, slug: string, part: GenericPart, gpuPar
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(gpuPart?.brand ?? part.brand, gpuPart?.name ?? part.name, [gpuPart?.model ?? "", gpuPart?.chipset ?? ""])),
+    escapeSql(gpuPart?.releaseYear ?? part.releaseYear),
     escapeSql(gpuPart?.brand ?? part.brand),
     escapeSql(gpuPart?.name ?? part.name),
     escapeSql(gpuPart?.model ?? spec(part, ["model"])),
@@ -279,6 +288,8 @@ export function gpuInsert(runId: string, slug: string, part: GenericPart, gpuPar
 export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) {
   return `insert into cpu_coolers (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "brand",
     "name",
     "type",
@@ -289,6 +300,7 @@ export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) 
     "heatsink_material",
     "heatpipes",
     "ram_clearance_mm",
+    "ram_clearance_raw",
     "block_length_mm",
     "block_width_mm",
     "block_height_mm",
@@ -324,6 +336,8 @@ export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) 
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(part.brand, part.name, [spec(part, ["cooler_type", "type"])])),
+    escapeSql(part.releaseYear),
     escapeSql(part.brand),
     escapeSql(part.name),
     escapeSql(spec(part, ["cooler_type", "type"])),
@@ -334,6 +348,7 @@ export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) 
     escapeSql(spec(part, ["heatsink_material"])),
     escapeSql(dim(part, ["heatpipes", "heatpipe_count"])),
     escapeSql(dim(part, ["ram_clearance_mm", "ram_clearance"])),
+    escapeSql(spec(part, ["ram_clearance_raw", "ram_clearance"])),
     escapeSql(dim(part, ["block_length_mm", "block_length"])),
     escapeSql(dim(part, ["block_width_mm", "block_width"])),
     escapeSql(dim(part, ["block_height_mm", "block_height"])),
@@ -373,6 +388,8 @@ export function cpuCoolerInsert(runId: string, slug: string, part: GenericPart) 
 export function fanInsert(runId: string, slug: string, part: GenericPart) {
   return `insert into fans (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "brand",
     "model",
     "fan_size_mm",
@@ -400,6 +417,8 @@ export function fanInsert(runId: string, slug: string, part: GenericPart) {
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(part.brand, spec(part, ["model", "name"]))),
+    escapeSql(part.releaseYear),
     escapeSql(part.brand),
     escapeSql(spec(part, ["model", "name"])),
     escapeSql(dim(part, ["fan_size_mm", "fan_size", "size"])),
@@ -431,11 +450,14 @@ export function fanInsert(runId: string, slug: string, part: GenericPart) {
 export function motherboardInsert(runId: string, slug: string, part: GenericPart) {
   return `insert into motherboards (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "cpu",
     "socket",
     "chipset",
     "brand",
     "name",
+    "form_factor",
     "height_mm",
     "width_mm",
     "pcie_gen",
@@ -497,11 +519,14 @@ export function motherboardInsert(runId: string, slug: string, part: GenericPart
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(part.brand, part.name, [spec(part, ["socket"]), spec(part, ["chipset"]), spec(part, ["form_factor"])])),
+    escapeSql(part.releaseYear),
     escapeSql(spec(part, ["cpu"])),
     escapeSql(spec(part, ["socket"])),
     escapeSql(spec(part, ["chipset"])),
     escapeSql(part.brand),
     escapeSql(part.name),
+    escapeSql(spec(part, ["form_factor"])),
     escapeSql(dim(part, ["height_mm", "height"])),
     escapeSql(dim(part, ["width_mm", "width"])),
     escapeSql(spec(part, ["pcie_gen"])),
@@ -580,6 +605,8 @@ export function psuInsert(
 
   return `insert into psus (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "brand",
     "name",
     "form_factor",
@@ -617,6 +644,8 @@ export function psuInsert(
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(part.brand, part.name, [spec(part, ["form_factor", "psu"])])),
+    escapeSql(part.releaseYear),
     escapeSql(part.brand),
     escapeSql(part.name),
     escapeSql(spec(part, ["form_factor", "psu"])),
@@ -658,6 +687,8 @@ export function psuInsert(
 export function ramInsert(runId: string, slug: string, part: GenericPart) {
   return `insert into ram (${[
     "id",
+    "normalized_search_text",
+    "release_year",
     "brand",
     "model",
     "memory_type",
@@ -669,6 +700,8 @@ export function ramInsert(runId: string, slug: string, part: GenericPart) {
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
+    escapeSql(searchablePartText(part.brand, spec(part, ["model", "name"]), [spec(part, ["memory_type", "type", "ddr_type"])])),
+    escapeSql(part.releaseYear),
     escapeSql(part.brand),
     escapeSql(spec(part, ["model", "name"])),
     escapeSql(spec(part, ["memory_type", "type", "ddr_type"])),

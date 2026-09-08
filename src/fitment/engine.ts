@@ -411,8 +411,7 @@ export function evaluateMotherboardAgainstCase(
   motherboard: GenericPart,
   casePart: CasePart,
 ): FitmentEvidence {
-  const caseSupport =
-    casePart.raw.Motherboard || casePart.raw.motherboard || "";
+  const caseSupport = casePart.motherboard;
   const boardFormFactor = motherboardFormFactor(motherboard);
   const caseTokens = parseSupportTokens(caseSupport, motherboardTokenAliases);
   const boardToken = canonicalToken(boardFormFactor, motherboardTokenAliases);

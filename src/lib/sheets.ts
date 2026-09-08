@@ -41,6 +41,15 @@ function cell(row: Record<string, string>, key: string) {
 
 const UNKNOWN_VALUES = new Set(["", "-", "?", "tbd", "n/a", "na"]);
 
+// These are workbook classifications, not guesses from a board's product name.
+// Keep this map explicit as the workbook's sheet names evolve.
+const MOTHERBOARD_SOURCE_SHEET_FORM_FACTORS: Record<string, string> = {
+  mITX: "mITX",
+  mATX: "mATX",
+  "Motherboard mITX": "mITX",
+  "Motherboard mATX": "mATX",
+};
+
 function isUnknown(value: string) {
   return UNKNOWN_VALUES.has(value.trim().toLowerCase());
 }
@@ -203,6 +212,10 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
       .map(([key, value]) => [normalizeSpecKey(key), value.trim()] as const)
       .filter(([key, value]) => key && value),
   );
+  if (kind === "motherboard") {
+    const formFactor = MOTHERBOARD_SOURCE_SHEET_FORM_FACTORS[raw.sourceSheet];
+    if (formFactor) specs.form_factor = formFactor;
+  }
   const dimensions = Object.fromEntries(
     Object.entries(values)
       .map(

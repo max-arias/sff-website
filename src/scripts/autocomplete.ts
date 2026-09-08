@@ -107,7 +107,7 @@ export function initAutocomplete() {
 
     const fetchSuggestions = async () => {
       const query = input.value.trim();
-      if (query.length < 2) {
+      if (query.length < 3) {
         suggestions = [];
         closePanel();
         return;
@@ -150,7 +150,7 @@ export function initAutocomplete() {
     });
 
     input.addEventListener("focus", () => {
-      if (input.value.trim().length >= 2) void fetchSuggestions();
+      if (input.value.trim().length >= 3) void fetchSuggestions();
     });
 
     input.addEventListener("keydown", (event) => {
