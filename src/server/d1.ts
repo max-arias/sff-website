@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { normalizeSearchText } from "../lib/search-normalization";
 import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
 import { decodeCatalogRow } from "./d1-decoders";
+import { buildCatalogSearchStatement } from "./catalog-search-query";
 
 interface D1Result<T> {
   results?: T[];
@@ -203,26 +204,14 @@ export async function searchCatalog(
   }
 
   const db = requireDb();
-  const values: unknown[] = [`%${options.query}%`];
-  const kindClause = options.kind ? "and kind = ?" : "";
-  if (options.kind) values.push(options.kind);
-  values.push(options.query, `${options.query}%`, options.limit);
-
+  const statement = buildCatalogSearchStatement(
+    options.query,
+    options.kind,
+    options.limit,
+  );
   const rows = await db
-    .prepare(
-      `select id, kind, display_name, normalized_search_text
-       from catalog_search
-       where normalized_search_text like ? ${kindClause}
-       order by
-         case
-           when normalized_search_text = ? then 0
-           when normalized_search_text like ? then 1
-           else 2
-         end,
-         display_name collate nocase
-       limit ?`,
-    )
-    .bind(...values)
+    .prepare(statement.sql)
+    .bind(...statement.values)
     .all<{
       id: string;
       kind: string;
@@ -231,6 +220,7 @@ export async function searchCatalog(
     }>();
 
   const results = rows.results ?? [];
+
   return {
     source: "d1" as const,
     suggestions: results.map((row, index) => ({
@@ -243,6 +233,38 @@ export async function searchCatalog(
       match: row.normalized_search_text,
     })),
   };
+}
+
+export async function loadCatalogKind(
+  event: unknown,
+  rawKind: string,
+  rawSearch?: string,
+): Promise<GenericPart[]> {
+  const kind = rawKind as PartKind;
+  const table = kindToTable(kind);
+  if (!table) return [];
+
+  const orderBy = kind === "fan" || kind === "ram" ? "model" : "name";
+  // This full-table read happens only when the immutable per-kind KV read
+  // model expires; all steady-state builder traffic is served from KV.
+  const parts = await cachedCatalogValue(`v3/kind/${kind}`, async () => {
+    const db = requireDb();
+    const rows = await db
+      .prepare(`select * from ${table} order by ${orderBy}`)
+      .all<Record<string, unknown>>();
+
+    return (rows.results ?? []).map(
+      (row) => decodeCatalogRow(row, kind) as GenericPart,
+    );
+  });
+  const search = rawSearch?.trim();
+  if (!search) return parts;
+
+  const matches = await searchCatalog(event, { query: search, kind, limit: 100 });
+  const partsById = new Map(parts.map((part) => [part.id, part]));
+  return matches.suggestions
+    .map((match) => partsById.get(match.id))
+    .filter((part): part is GenericPart => Boolean(part));
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +336,30 @@ type CatalogResult = {
   };
 };
 
+type CatalogTotals = {
+  total: number;
+  byKind: Record<string, number>;
+};
+
+async function loadCatalogTotals(): Promise<CatalogTotals> {
+  return cachedCatalogValue("v3/totals", async () => {
+    const db = requireDb();
+    const counts = await Promise.all(
+      Object.entries(TABLE_MAP).map(async ([kind, table]) => {
+        const result = await db
+          .prepare(`select count(*) as count from ${table}`)
+          .all<{ count: number }>();
+        return [kind, Number(result.results?.[0]?.count ?? 0)] as const;
+      }),
+    );
+    const byKind = Object.fromEntries(counts);
+    return {
+      byKind,
+      total: counts.reduce((total, [, count]) => total + count, 0),
+    };
+  });
+}
+
 export function loadCatalog(
   event: unknown,
   rawOptions: Partial<CatalogQueryOptions> = {},
@@ -322,7 +368,7 @@ export function loadCatalog(
   if (options.search) return loadCatalogUncached(event, options);
 
   return cachedCatalogValue(
-    `v1/catalog/${encodeURIComponent(JSON.stringify(options))}`,
+    `v3/catalog/${encodeURIComponent(JSON.stringify(options))}`,
     () => loadCatalogUncached(event, options),
   );
 }
@@ -361,7 +407,8 @@ async function loadCatalogUncached(
     parts = (await loadCatalogPartsByIds(event, pageIds)).parts;
   } else {
     const { where, values } = buildCatalogWhere(options, table);
-    const orderBy = "order by name";
+    const orderBy =
+      kind === "fan" || kind === "ram" ? "order by model" : "order by name";
     const rows = await db
       .prepare(`select * from ${table} ${where} ${orderBy} limit ? offset ?`)
       .bind(...values, options.pageSize, offset)
@@ -374,20 +421,17 @@ async function loadCatalogUncached(
     filteredTotal = Number(filteredRows.results?.[0]?.count ?? 0);
   }
 
-  // Summary: aggregate across all tables
-  const byKind: Record<string, number> = {};
-  for (const [k, tbl] of Object.entries(TABLE_MAP)) {
-    const r = await db
-      .prepare(`select count(*) as count from ${tbl}`)
-      .all<{ count: number }>();
-    byKind[k] = Number(r.results?.[0]?.count ?? 0);
-  }
-  const total = Object.values(byKind).reduce((a, b) => a + b, 0);
+  const totals = await loadCatalogTotals();
 
   return {
     parts,
     source: "d1",
-    summary: { total, filteredTotal, byKind, bySourceSheet: {} },
+    summary: {
+      total: totals.total,
+      filteredTotal,
+      byKind: totals.byKind,
+      bySourceSheet: {},
+    },
     pagination: {
       page: options.page,
       pageSize: options.pageSize,

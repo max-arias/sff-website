@@ -1,11 +1,11 @@
 import type { CasePart, GenericPart, GpuPart } from "../types";
 import type { CatalogSearchSuggestion, CatalogStore } from "./catalog-store";
 import {
-  loadParts,
-  loadCatalogPartsByIds,
-  loadCatalog,
-  searchCatalog,
   findCaseAndGpu,
+  loadCatalogKind,
+  loadCatalogPartsByIds,
+  loadParts,
+  searchCatalog,
 } from "./d1";
 
 /**
@@ -28,13 +28,7 @@ export class D1CatalogStore implements CatalogStore {
   }
 
   async loadKindCatalog(kind: string, search?: string): Promise<GenericPart[]> {
-    const result = await loadCatalog(this.context, {
-      kind,
-      page: 1,
-      pageSize: 5000,
-      search: search?.trim() || undefined,
-    });
-    return result.parts;
+    return loadCatalogKind(this.context, kind, search);
   }
 
   async searchSuggestions(
