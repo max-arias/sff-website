@@ -19,6 +19,13 @@
       "id": "f9ff97d9716644dcabcbb09626eb6056"
     }
   ],
+  "ratelimits": [
+    {
+      "name": "CATALOG_SEARCH_RATE",
+      "namespace_id": "3801",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
   "env": {
     "preview": {
       "name": "sff-pc-builder-preview",
@@ -33,6 +40,13 @@
         {
           "binding": "CATALOG_CACHE",
           "id": "93ab30768baa4924bc06a30ff8da7353"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "CATALOG_SEARCH_RATE",
+          "namespace_id": "3802",
+          "simple": { "limit": 10, "period": 60 }
         }
       ]
     }

@@ -80,7 +80,10 @@ function requireDb() {
 
 const CATALOG_CACHE_TTL_SECONDS = 60 * 60;
 
-type CatalogBindings = { CATALOG_CACHE?: KVNamespace };
+type CatalogBindings = {
+  CATALOG_CACHE?: KVNamespace;
+  CATALOG_SEARCH_RATE?: RateLimit;
+};
 // Astro's generated cloudflare:workers type does not include custom bindings.
 const catalogBindings = env as unknown as CatalogBindings;
 
@@ -202,6 +205,35 @@ export async function searchCatalog(
       suggestions: [] as CatalogSearchSuggestion[],
     };
   }
+  const cacheKey = new Request(
+    `https://catalog-search-cache.invalid/v1?${new URLSearchParams({
+      query: options.query,
+      kind: options.kind ?? "",
+      limit: String(options.limit),
+    })}`,
+  );
+  let cache: Cache | undefined;
+  try {
+    cache = await caches.open("catalog-search");
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      return (await cached.json()) as {
+        source: "d1";
+        suggestions: CatalogSearchSuggestion[];
+      };
+    }
+  } catch {
+    // The rate limiter still protects D1 when the per-colo cache is unavailable.
+  }
+
+  const rateLimit = catalogBindings.CATALOG_SEARCH_RATE;
+  if (rateLimit && !(await rateLimit.limit({ key: "catalog-search" })).success) {
+    return {
+      source: "d1" as const,
+      suggestions: [] as CatalogSearchSuggestion[],
+    };
+  }
+
 
   const db = requireDb();
   const statement = buildCatalogSearchStatement(
@@ -220,8 +252,7 @@ export async function searchCatalog(
     }>();
 
   const results = rows.results ?? [];
-
-  return {
+  const searchResult = {
     source: "d1" as const,
     suggestions: results.map((row, index) => ({
       id: row.id,
@@ -233,6 +264,23 @@ export async function searchCatalog(
       match: row.normalized_search_text,
     })),
   };
+
+  if (cache) {
+    try {
+      await cache.put(
+        cacheKey,
+        new Response(JSON.stringify(searchResult), {
+          headers: {
+            "Cache-Control": `public, max-age=${CATALOG_CACHE_TTL_SECONDS}`,
+            "Content-Type": "application/json",
+          },
+        }),
+      );
+    } catch {
+      // A cache write failure must not turn a successful search into an error.
+    }
+  }
+  return searchResult;
 }
 
 export async function loadCatalogKind(
@@ -467,12 +515,8 @@ function clampCatalogOptions(
 ): CatalogQueryOptions {
   return {
     page: Math.max(1, Math.floor(options.page ?? 1)),
-    pageSize: Math.max(10, Math.min(5000, Math.floor(options.pageSize ?? 50))),
+    pageSize: Math.max(10, Math.min(100, Math.floor(options.pageSize ?? 50))),
     kind: options.kind && options.kind !== "all" ? options.kind : undefined,
-    sourceSheet:
-      options.sourceSheet && options.sourceSheet !== "all"
-        ? options.sourceSheet
-        : undefined,
     search: options.search?.trim() || undefined,
   };
 }
