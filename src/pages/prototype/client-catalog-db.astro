@@ -1,0 +1,11 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ClientCatalogDbPrototype from "../../components/prototype/ClientCatalogDbPrototype";
+---
+
+<BaseLayout
+  title="SFF Builder | Client catalog database prototype"
+  description="Throwaway validation of browser-resident SQLite catalog search without D1."
+>
+  <ClientCatalogDbPrototype client:only="solid" />
+</BaseLayout>

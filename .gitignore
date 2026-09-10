@@ -12,3 +12,5 @@ dist
 qa-output/
 .dist-dev/
 .slim/deepwork/
+/public/prototype/catalog-search.sqlite3
+/public/prototype/catalog-search.manifest.json

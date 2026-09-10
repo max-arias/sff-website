@@ -28,13 +28,19 @@
     "intake:audit": "tsx scripts/audit-sff-workbook.ts",
     "intake:enrich": "tsx scripts/enrich-psu-tiers.ts",
     "intake:sql": "tsx scripts/intake.ts --sql-only",
-    "scrape:case-images": "tsx scripts/scrape-case-images.ts"
+    "scrape:case-images": "tsx scripts/scrape-case-images.ts",
+    "prototype:client-db:artifact": "tsx scripts/build-client-catalog-prototype.ts",
+    "prototype:client-db": "npm run prototype:client-db:artifact && npm run cf:build"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.0",
+    "@astrojs/solid-js": "^7.0.2",
+    "@sqlite.org/sqlite-wasm": "^3.53.4-build1",
+    "@tanstack/solid-table": "^9.2.4",
     "astro": "^7.0.0",
     "exceljs": "^4.4.0",
-    "fuse.js": "^7.4.2"
+    "fuse.js": "^7.4.2",
+    "solid-js": "^1.9.15"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
