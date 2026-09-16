@@ -287,13 +287,13 @@ test("riser advisory is omitted from GPU candidates until a GPU is selected", as
     "dimensional GPU evidence remains visible",
   );
   assert.ok(
-    !view.buildIssues.some((section) =>
-      section.issues.some((issue) => issue.includes("requires a GPU riser")),
+    !view.slots.some((slot) =>
+      slot.issues.some((issue) => issue.message.includes("requires a GPU riser")),
     ),
   );
 });
 
-test("selected case and GPU retain the riser advisory in Build Issues", async () => {
+test("a shared finding is listed once, on the part whose data caused it", async () => {
   const store = new InMemoryCatalogStore({
     cases: [fakeCase({ id: "c", gpuRiser: "Y" })],
     gpus: [fakeGpu({ id: "g" })],
@@ -301,28 +301,168 @@ test("selected case and GPU retain the riser advisory in Build Issues", async ()
   });
   const view = await getBuildView(new URL("http://localhost/build?kind=gpu&case=c&gpu=g"), store);
 
-  assert.ok(
-    view.buildIssues.some((section) =>
-      section.issues.includes("This case requires a GPU riser."),
-    ),
-  );
-  const riserSections = view.buildIssues.filter((section) =>
-    section.issues.includes("This case requires a GPU riser."),
-  );
+  const caseSlot = view.slots.find((slot) => slot.kind === "case")!;
+  const gpuSlot = view.slots.find((slot) => slot.kind === "gpu")!;
   assert.deepEqual(
-    riserSections.map((section) => section.kind).sort(),
-    ["case", "gpu"],
+    caseSlot.issues.map((issue) => issue.code),
+    ["requires-riser"],
+  );
+  assert.deepEqual(gpuSlot.issues, []);
+
+  const riserIssue = caseSlot.issues[0];
+  assert.equal(riserIssue.message, "This case requires a GPU riser.");
+  assert.equal(riserIssue.title, "GPU riser cable required");
+  assert.equal(riserIssue.dismissible, true);
+  assert.equal(caseSlot.verdict, "conditional");
+  assert.equal(gpuSlot.verdict, "conditional");
+});
+
+test("a part card lists every warning on that part", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c", style: "Sandwich", gpuRiser: "Y" })],
+    gpus: [fakeGpu({ id: "g" })],
+    parts: [],
+  });
+  const view = await getBuildView(new URL("http://localhost/build?kind=gpu&case=c&gpu=g"), store);
+
+  const caseSlot = view.slots.find((slot) => slot.kind === "case")!;
+  assert.deepEqual(
+    caseSlot.issues.map((issue) => issue.code),
+    ["sandwich-layout-mode", "requires-riser"],
   );
   assert.equal(
-    riserSections.reduce(
-      (count, section) =>
-        count + section.issues.filter((issue) => issue === "This case requires a GPU riser.").length,
-      0,
-    ),
-    2,
-    "one riser advisory per selected case/GPU slot",
+    view.slots.find((slot) => slot.kind === "gpu")!.issues.length,
+    0,
   );
   assert.equal(view.buildStatus, "conditional");
+});
+
+test("a dimension conflict is listed on the part whose measurement caused it", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [
+      fakeCase({
+        id: "c",
+        dimensions: { ...fakeCase().dimensions, gpuLengthMm: 200 },
+      }),
+    ],
+    gpus: [fakeGpu({ id: "g" })],
+    parts: [],
+  });
+  const view = await getBuildView(new URL("http://localhost/build?kind=gpu&case=c&gpu=g"), store);
+
+  const caseSlot = view.slots.find((slot) => slot.kind === "case")!;
+  const gpuSlot = view.slots.find((slot) => slot.kind === "gpu")!;
+  assert.deepEqual(
+    gpuSlot.issues.map((issue) => issue.code),
+    ["exceeds-gpuLengthMm"],
+  );
+  assert.ok(caseSlot.issues.every((issue) => issue.code !== "exceeds-gpuLengthMm"));
+  assert.equal(gpuSlot.verdict, "fail");
+});
+
+test("ignoring a warning clears the build verdict but keeps the warning listed", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c", style: "Sandwich", gpuRiser: "Y" })],
+    gpus: [fakeGpu({ id: "g" })],
+    parts: [],
+  });
+  const url = new URL("http://localhost/build?kind=gpu&case=c&gpu=g");
+
+  const before = await getBuildView(url, store);
+  assert.equal(before.buildStatus, "conditional");
+  const issues = before.slots.find((slot) => slot.kind === "case")!.issues;
+  assert.ok(issues.length > 0);
+  assert.ok(issues.every((issue) => !issue.ignored));
+  assert.ok(issues.every((issue) => issue.dismissible));
+
+  const ignoredCodes = issues.map((issue) => issue.code);
+  const after = await getBuildView(url, store, { ignored: new Set(ignoredCodes) });
+
+  assert.equal(after.buildStatus, "pass");
+  assert.equal(after.slots.find((slot) => slot.kind === "gpu")!.verdict, "pass");
+  for (const slot of after.slots) {
+    if (!slot.id) continue;
+    assert.equal(slot.verdict, "pass");
+    for (const issue of slot.issues) {
+      assert.equal(
+        issue.ignored,
+        ignoredCodes.includes(issue.code),
+        `${issue.code} keeps its ignored state on the ${slot.kind} card`,
+      );
+    }
+  }
+});
+
+test("a satisfied constraint is not repeated as a card note", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c", psu: "SFX / SFX-L" })],
+    parts: [
+      { kind: "psu", id: "psu-1", displayName: "Test PSU", name: "Test PSU", brand: "Test", sourceSheet: "PSU", rowNumber: 1, status: "", availabilityStatus: "available" as const, sellerUrl: "", productUrl: "", specs: { form_factor: "SFX" }, dimensions: {}, releaseYear: null, flags: [], raw: {}, links: {} },
+    ],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost/build?kind=psu&case=c&psu=psu-1"),
+    store,
+  );
+
+  const psuSlot = view.slots.find((slot) => slot.kind === "psu")!;
+  assert.equal(psuSlot.verdict, "pass");
+  assert.deepEqual(psuSlot.issues, []);
+  assert.equal(psuSlot.note, "", "the case envelope stays on the case card");
+});
+
+test("a tight clearance still surfaces as a card note", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [
+      fakeCase({
+        id: "c",
+        dimensions: { ...fakeCase().dimensions, gpuWidthMm: 145 },
+      }),
+    ],
+    gpus: [fakeGpu({ id: "g" })],
+    parts: [],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost/build?kind=gpu&case=c&gpu=g"),
+    store,
+  );
+
+  const gpuSlot = view.slots.find((slot) => slot.kind === "gpu")!;
+  assert.equal(gpuSlot.verdict, "pass");
+  assert.deepEqual(gpuSlot.issues, [], "a pass advisory is not an issue");
+  assert.match(gpuSlot.note, /GPU width has only 5mm of clearance/);
+  assert.equal(
+    view.slots.find((slot) => slot.kind === "case")!.note,
+    "",
+    "the note belongs to the part being measured",
+  );
+});
+
+test("hard conflicts cannot be ignored", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [
+      fakeCase({
+        id: "c",
+        dimensions: { ...fakeCase().dimensions, gpuLengthMm: 200 },
+      }),
+    ],
+    gpus: [fakeGpu({ id: "g" })],
+    parts: [],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost/build?kind=gpu&case=c&gpu=g"),
+    store,
+    { ignored: new Set(["exceeds-gpuLengthMm"]) },
+  );
+
+  assert.equal(view.buildStatus, "fail");
+  const issue = view.slots
+    .flatMap((slot) => slot.issues)
+    .find((candidate) => candidate.code === "exceeds-gpuLengthMm");
+  assert.ok(issue, "length conflict is listed on a part card");
+  assert.equal(issue!.dismissible, false);
+  assert.equal(issue!.ignored, false);
+  assert.equal(issue!.title, "GPU length exceeds case limit");
 });
 
 // ---------------------------------------------------------------------------

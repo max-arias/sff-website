@@ -1,6 +1,8 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { BuildView, BuildViewNumericFilter } from "../../lib/build-view";
+import { issueTitleForCode } from "../../fitment/issue-copy";
+import { readIgnoredWarnings, writeIgnoredWarnings } from "../../lib/ignored-warning-storage";
 import { BrowserCatalogClient, type BrowserCatalogStatus } from "./catalog-client";
 
 const sparseRowsTooltip = "Rows without fitment-relevant data are hidden by default. Turn this on to include them.";
@@ -33,6 +35,7 @@ export default function BuildClient() {
   const [isDesktop, setIsDesktop] = createSignal(true);
   const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
   const [scrollAttached, setScrollAttached] = createSignal(false);
+  const [ignoredWarnings, setIgnoredWarnings] = createSignal<string[]>(readIgnoredWarnings());
   let catalog: BrowserCatalogClient | undefined;
   let latestHref: string | undefined;
   let searchTimer: number | undefined;
@@ -86,7 +89,7 @@ export default function BuildClient() {
     setLoading(true);
     setError(undefined);
     try {
-      const next = await catalog.getView(resolved);
+      const next = await catalog.getView(resolved, ignoredWarnings());
       if (latestHref !== resolved) return;
       setView(next.view);
       setStatus(next.status);
@@ -135,6 +138,31 @@ export default function BuildClient() {
       filterTimers.delete(name);
       updateQuery(name, value || undefined);
     }, 400));
+  };
+
+  /**
+   * Ignoring a warning recomputes the view without touching URL state: ignored
+   * codes are a browser-local preference, not part of the shared build.
+   */
+  const ignoreWarning = (code: string) => {
+    if (ignoredWarnings().includes(code)) return;
+    const next = [...ignoredWarnings(), code];
+    setIgnoredWarnings(next);
+    writeIgnoredWarnings(next);
+    void loadView(window.location.href, false);
+  };
+
+  const restoreWarning = (code: string) => {
+    const next = ignoredWarnings().filter((candidate) => candidate !== code);
+    setIgnoredWarnings(next);
+    writeIgnoredWarnings(next);
+    void loadView(window.location.href, false);
+  };
+
+  const restoreAllIgnoredWarnings = () => {
+    setIgnoredWarnings([]);
+    writeIgnoredWarnings([]);
+    void loadView(window.location.href, false);
   };
 
   /**
@@ -479,9 +507,8 @@ export default function BuildClient() {
                       </Show>
                     </div>
 
-                    <footer class="flex flex-shrink-0 items-center justify-between gap-4 px-6 py-3 border-t border-base-300 bg-base-100">
+                    <footer class="flex flex-shrink-0 items-center gap-4 px-6 py-3 border-t border-base-300 bg-base-100">
                       <span class="text-sm text-base-content/40">{currentView().totalRows.toLocaleString()} rows{currentView().state.search.trim() ? ` matching “${currentView().state.search.trim()}”` : ""}</span>
-                      <span class="font-mono text-[0.65rem] uppercase tracking-[0.06em] text-base-content/30">All rows shown</span>
                     </footer>
                   </div>
                 </section>
@@ -507,13 +534,65 @@ export default function BuildClient() {
                       fallback={<div class="card card-bordered bg-base-100"><div class="card-body p-5 gap-0"><h2 class="text-lg font-bold tracking-[-0.01em] mb-3">Getting Started</h2><p class="text-sm text-base-content/60 leading-relaxed mb-3">This tool checks whether PC parts physically fit together. Search for a case or GPU in the table, then add more parts to check compatibility.</p><p class="text-sm text-base-content/60 leading-relaxed">Dimensions are compared in millimeters. Results show <span class="badge badge-xs badge-success font-mono font-bold !text-success-content">PASS</span> (fits), <span class="badge badge-xs badge-warning font-mono font-bold !text-warning-content">CONDITIONAL</span> (may fit — check notes), or <span class="badge badge-xs badge-error font-mono font-bold !text-error-content">FAIL</span> (won&apos;t fit). You can still select failing parts to understand why.</p></div></div>}
                     >
                       <For each={currentView().slots.filter((slot) => slot.id)}>{(slot) =>
-                        <div class="card card-bordered bg-base-100 transition-colors" classList={{ "border-t-2 border-t-primary": slot.verdict === "pass" && slot.kind !== currentView().state.kind, "border-t-2 border-t-warning": slot.verdict === "conditional" && slot.kind !== currentView().state.kind, "border-t-2 border-t-error": (slot.verdict === "fail" || slot.state === "unresolved") && slot.kind !== currentView().state.kind, "ring-1 ring-primary/20 bg-primary/[0.05]": slot.kind === currentView().state.kind }}>
+                        <div class="card bg-base-100">
                           <div class="card-body p-3.5 gap-0">
                             <div class="flex items-center justify-between gap-2"><span class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.1em] text-base-content/60">{slot.label}</span><div class="flex items-center gap-1.5"><span class="badge badge-xs font-mono font-bold uppercase tracking-[0.06em]" classList={{ "badge-success": slot.verdict === "pass", "badge-warning": slot.verdict === "conditional", "badge-error": slot.verdict === "fail", "badge-ghost": slot.verdict === "unscored" }} title={slot.verdictTooltip}>{slot.verdictCopy}</span><a class="btn btn-xs btn-ghost btn-square text-error" href={slot.clearUrl} aria-label={`Clear ${slot.kind}`} title="Clear" onClick={(event) => follow(event, slot.clearUrl)}><svg viewBox="0 0 24 24" aria-hidden="true" class="w-3 h-3"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" /></svg></a></div></div>
                             <h2 class="text-base font-semibold leading-tight mt-2.5 mb-0.5">{slot.title}</h2>
                             <Show when={slot.subtitle}><p class="text-sm text-base-content/60"><CatalogValue value={slot.subtitle ?? ""} /></p></Show>
-                            <Show when={slot.note}><p class="mt-2 p-2 bg-error/10 rounded-btn text-sm text-base-content/60">{slot.note}</p></Show>
-                            <Show when={slot.specs.length > 0}><dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2.5 pt-2.5 border-t border-base-300"><For each={slot.specs}>{(spec) => <div><dt class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.08em] text-base-content/60">{spec.label}</dt><dd class="text-sm font-medium mt-0.5 leading-tight break-words"><CatalogValue value={spec.value} /></dd></div>}</For></dl></Show>
+                            <Show when={slot.specs.length > 0}><dl
+                              class="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2.5 pt-2.5 border-t border-base-300"
+                              classList={{ "border-b": slot.issues.length > 0 || Boolean(slot.note), "pb-2.5": slot.issues.length > 0 || Boolean(slot.note) }}
+                            ><For each={slot.specs}>{(spec) => <div><dt class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.08em] text-base-content/60">{spec.label}</dt><dd class="text-sm font-medium mt-0.5 leading-tight break-words"><CatalogValue value={spec.value} /></dd></div>}</For></dl></Show>
+                            <Show
+                              when={slot.issues.length > 0}
+                              fallback={<Show when={slot.note}><p class="mt-2.5 p-2 rounded-btn text-sm text-base-content/60" classList={{ "bg-error/10": slot.state === "unresolved", "bg-base-200": slot.state !== "unresolved" }}>{slot.note}</p></Show>}
+                            >
+                              <div class="mt-2.5">
+                                <h3 class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.08em] text-base-content/60">Issues</h3>
+                                <ul class="flex flex-col divide-y divide-base-300/60 overflow-hidden rounded-btn border border-base-300">
+                                  <For each={slot.issues}>{(issue) =>
+                                    <Show
+                                      when={!issue.ignored}
+                                      fallback={
+                                        <li class="flex items-center justify-between gap-2 bg-base-200/40 px-2.5 py-1.5">
+                                          <span class="min-w-0 truncate text-xs text-base-content/45" title={issue.message}>{issue.title}</span>
+                                          <button
+                                            type="button"
+                                            class="btn btn-ghost btn-xs btn-square shrink-0 text-base-content/50"
+                                            title="Show this warning again"
+                                            aria-label={`Show ${issue.title} again`}
+                                            onClick={() => restoreWarning(issue.code)}
+                                          >
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" class="w-3.5 h-3.5"><path d="M9 14l-4-4 4-4M5 10h9a5 5 0 0 1 0 10h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                          </button>
+                                        </li>
+                                      }
+                                    >
+                                      <li class="p-2.5" classList={{ "bg-error/[0.06]": issue.verdict === "fail", "bg-warning/[0.07]": issue.verdict === "conditional" }}>
+                                        <div class="flex items-start justify-between gap-2">
+                                          <span class="text-sm font-semibold leading-snug">{issue.title}</span>
+                                          <Show
+                                            when={issue.dismissible}
+                                            fallback={<span class="shrink-0 font-mono text-[0.6rem] uppercase tracking-[0.04em] text-base-content/40">Hard conflict</span>}
+                                          >
+                                            <button
+                                              type="button"
+                                              class="btn btn-ghost btn-xs btn-square shrink-0 text-base-content/50 hover:text-error"
+                                              title="Ignore this warning in every build on this browser"
+                                              aria-label={`Ignore ${issue.title}`}
+                                              onClick={() => ignoreWarning(issue.code)}
+                                            >
+                                              <svg viewBox="0 0 24 24" aria-hidden="true" class="w-3.5 h-3.5"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                            </button>
+                                          </Show>
+                                        </div>
+                                        <p class="mt-1 text-xs leading-relaxed text-base-content/60">{issue.message}</p>
+                                      </li>
+                                    </Show>
+                                  }</For>
+                                </ul>
+                              </div>
+                            </Show>
                           </div>
                         </div>
                       }</For>
@@ -521,8 +600,29 @@ export default function BuildClient() {
                     </Show>
                   </div>
 
-                  <Show when={currentView().buildIssues.length > 0}>
-                    <div class="mt-auto mx-4 mb-5 p-4 border border-error/20 rounded-btn bg-error/[0.04]"><h3 class="font-mono text-[0.7rem] font-bold uppercase tracking-[0.1em] text-error mb-3">Build Issues</h3><For each={currentView().buildIssues}>{(section) => <div class="[&+&]:mt-3"><strong class="text-sm">{section.label}</strong><ul class="mt-1.5 ml-4 text-sm text-base-content/60 leading-relaxed list-disc"><For each={section.issues}>{(issue) => <li>{issue}</li>}</For></ul></div>}</For></div>
+                  <Show when={ignoredWarnings().length > 0}>
+                    <details class="mt-auto mx-4 mb-5 p-3 border border-base-300 rounded-btn bg-base-200/60">
+                      <summary class="cursor-pointer font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/50">
+                        {ignoredWarnings().length} ignored warning{ignoredWarnings().length === 1 ? "" : "s"}
+                      </summary>
+                      <ul class="mt-2 flex flex-col gap-1">
+                        <For each={ignoredWarnings()}>{(code) =>
+                          <li class="flex items-center justify-between gap-2 text-xs leading-snug text-base-content/60">
+                            <span>{issueTitleForCode(code)}</span>
+                            <button
+                              type="button"
+                              class="btn btn-ghost btn-xs shrink-0 font-mono text-[0.6rem] uppercase tracking-[0.04em]"
+                              onClick={() => restoreWarning(code)}
+                            >Restore</button>
+                          </li>
+                        }</For>
+                      </ul>
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-xs mt-1 font-mono text-[0.6rem] uppercase tracking-[0.04em]"
+                        onClick={restoreAllIgnoredWarnings}
+                      >Restore all</button>
+                    </details>
                   </Show>
                   <Show when={status()}>{(catalogStatus) => <p class="px-5 pb-4 font-mono text-[0.6rem] uppercase tracking-[0.06em] text-base-content/40">{catalogStatus().rows.toLocaleString()} local records · {catalogStatus().downloaded ? "downloaded" : "ready"}</p>}</Show>
                 </aside>

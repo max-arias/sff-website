@@ -156,17 +156,17 @@ _Avoid_: Constant auto-snapping, ignored user selection
 A persistent sidebar or panel that lists the currently selected parts, keeps them visible regardless of the table kind, and surfaces slot-specific issues, constraints, and fitment context.
 _Avoid_: Vanishing selections, table-only build state
 
-**Build Issues Section**:
-The section below the selected parts in the **Selected Build Panel** that aggregates current build errors, warnings, and caveats without clearing the user’s selections.
-_Avoid_: Auto-cleared problem parts, hidden build-level issues
+**Part Issue List**:
+The list of findings shown inside each selected part’s card in the **Selected Build Panel** — the warnings and errors that part owns, including ones the user has ignored. Findings stay on the part they belong to rather than moving to a separate build-wide panel.
+_Avoid_: Separate build-wide issue section, auto-cleared problem parts, hidden findings
 
 **Slot-Grouped Issues**:
-The rule that the **Build Issues Section** organizes issues by selected **Role Slot** rather than by generic issue category.
+The rule that findings are organized by selected **Role Slot** rather than by generic issue category, so each part card shows what the engine says about that part.
 _Avoid_: Mixed global issue pile, type-first grouping
 
-**Relational Issue Echo**:
-The rule that an issue involving multiple selected slots may appear under each implicated slot so the relationship stays visible from either side.
-_Avoid_: Single-owner blame, hidden cross-slot dependency
+**Finding Ownership**:
+The rule that every finding belongs to exactly one selected part — the part whose own data the finding is about — and is listed only on that part’s **Part Issue List**. A case condition (sandwich layout mode, riser requirement, unvalidated PSU support) belongs to the case; a measurement under comparison (GPU length, cooler height, RAM height, PSU form factor) belongs to the part being measured. Because a card’s verdict still reflects the whole relationship, a part can show `conditional` or `fail` while its own list is empty because the partner part owns the cause.
+_Avoid_: The same warning on every card, ambiguous shared blame, hidden cross-slot dependency
 
 **Open Constraint**:
 A known limit or requirement inferred from the current build for an unfilled slot, such as maximum GPU length, cooler height, PSU form factor, or slot count.
@@ -244,6 +244,18 @@ _Avoid_: Paginated slices, page-index URL state, "load more" stepping
 The rule that when the table `kind` changes, kind-specific filters that no longer apply are removed from URL state while shared filters and selected parts remain.
 _Avoid_: Dead filter params, misleading stale URL state
 
+**Ignored Warning**:
+A non-`fail` finding the user has explicitly set aside after verifying it themselves — for example a sandwich-layout caveat once they have confirmed the slot mode, or a riser advisory once they have the cable. An ignored warning stops counting toward slot and build verdicts, but stays listed on its **Part Issue List** in an ignored state with a restore action, so a build never looks clean by accident.
+_Avoid_: Deleted issue, silently suppressed warning, auto-corrected build
+
+**Warning Ignore State**:
+The browser-local record of **Ignored Warnings**, keyed by engine evidence code and persisted in browser storage. It applies to every build on that browser, never travels in the URL, and is the only scope an ignore has: there is no per-build or server-side suppression.
+_Avoid_: Per-build dismissal, server-side suppression, expiring acknowledgement
+
+**Warning Copy Map**:
+The code-to-friendly-text map that gives each engine evidence code a stable short heading for issue rendering, with unmapped codes falling back to the engine message.
+_Avoid_: Inline per-component warning text, copy duplicated between engine and UI
+
 ## Relationships
 
 - The **Component Catalog** supplies the part records used by the **Fitment Engine**
@@ -280,9 +292,9 @@ _Avoid_: Dead filter params, misleading stale URL state
 - The **Selected Build Panel** should surface **Open Constraints** for unfilled slots
 - The **Selected Build Panel** should offer **Constraint Jumps** such as "View compatible GPUs"
 - Selected parts remain selected even when their current fitment state is `conditional` or `fail`
-- Current build errors, warnings, and caveats should appear in a **Build Issues Section** below the selected parts
-- The **Build Issues Section** should use **Slot-Grouped Issues**
-- Cross-part problems should use **Relational Issue Echo** where needed
+- Current build errors, warnings, and caveats should appear on each selected part’s **Part Issue List**
+- The **Part Issue List** should use **Slot-Grouped Issues**
+- Every finding follows **Finding Ownership**: it is listed on the one part whose data caused it
 - Filters created by a **Constraint Jump** are **Editable Derived Filters**
 - Physical limits from the current build should appear in filter controls through a **Constraint Overlay**
 - Candidate rows should communicate fitment outcome through **Verdict Row State**
@@ -306,6 +318,11 @@ _Avoid_: Dead filter params, misleading stale URL state
 - The **Selected Build Panel** should use **Fixed Slot Order**
 - The **Selected Build Panel** should show **Visible Empty Slots**
 - Each **Visible Empty Slot** should expose an **Empty Slot Action**
+- An **Ignored Warning** is identified by engine evidence code, so the same warning is ignored wherever it appears
+- Only `conditional` evidence can become an **Ignored Warning**; a `fail` **Hard Conflict** stays visible and cannot be ignored away
+- An **Ignored Warning** is excluded from verdict computation but remains listed on its **Part Issue List** with a restore action
+- **Ignored Warnings** live in the **Warning Ignore State** and are a browser-local preference, not part of **URL Build State**
+- Each engine evidence code should have an entry in the **Warning Copy Map** for issue rendering
 
 ## Example dialogue
 
@@ -409,13 +426,13 @@ _Avoid_: Dead filter params, misleading stale URL state
 > **Domain expert:** "No. The selected parts stay in URL state and remain visible in a **Selected Build Panel**, along with issues and constraints like supported GPU clearance."
 
 > **Dev:** "If a selected part becomes conditional or failing, do we clear it from the build?"
-> **Domain expert:** "No. It remains selected, and the resulting errors or caveats appear in the **Build Issues Section** below the selected parts."
+> **Domain expert:** "No. It remains selected, and the resulting errors or caveats appear on that part's **Part Issue List**."
 
 > **Dev:** "Should the issues list be grouped by error type or by selected part?"
 > **Domain expert:** "Use **Slot-Grouped Issues** so builders can see what is wrong with each selected slot directly."
 
-> **Dev:** "If a problem involves both the case and the GPU, do we show it only once?"
-> **Domain expert:** "No. Use **Relational Issue Echo** so the issue can appear under each implicated slot when that helps attribution."
+> **Dev:** "If a problem involves both the case and the GPU, do we show it on both cards?"
+> **Domain expert:** "No. **Finding Ownership** puts it on the one part whose data caused it — sandwich mode and riser requirements belong to the case, lengths and heights belong to the part being measured. The other card keeps the verdict it earns from the relationship."
 
 > **Dev:** "If the selected case defines a GPU envelope, does the user have to re-enter those limits manually in the table?"
 > **Domain expert:** "No. Show those as **Open Constraints** and provide a **Constraint Jump** like 'View compatible GPUs' that switches the table to `gpu` and pre-applies the derived filters."
@@ -471,6 +488,18 @@ _Avoid_: Dead filter params, misleading stale URL state
 > **Dev:** "If the user switches the table from GPUs to cases, do old GPU-only filters stay in the URL?"
 > **Domain expert:** "No. Use **Kind Filter Cleanup** so irrelevant kind-specific filters are removed while shared filters and selected parts stay intact."
 
+> **Dev:** "The user checked their sandwich case and knows the slot mode is fine. Does the warning have to stay amber forever?"
+> **Domain expert:** "No. Let them turn it into an **Ignored Warning**. The verdict clears, and the issue stays listed with a restore action."
+
+> **Dev:** "Should an always-ignored warning travel with a shared build link?"
+> **Domain expert:** "No. An **Ignored Warning** lives in the browser-local **Warning Ignore State** and never enters **URL Build State**."
+
+> **Dev:** "Can the user ignore a `fail` the same way?"
+> **Domain expert:** "No. A **Hard Conflict** is a known physical constraint, so only `conditional` evidence can be ignored."
+
+> **Dev:** "Where does the text for a warning live?"
+> **Domain expert:** "The engine owns the code and the detailed sentence. The **Warning Copy Map** owns the short heading rendered in the issue list, so copy can change without touching fitment rules."
+
 ## Flagged ambiguities
 
 - "search" was used as if it were the product itself; resolved: search is an entry path into the **Component Catalog**, not the core product.
@@ -501,9 +530,10 @@ _Avoid_: Dead filter params, misleading stale URL state
 - "smart defaults" could have overridden the user repeatedly; resolved: the **Kind Defaulting Rule** allows inferred first load defaults, then respects explicit user choice.
 - "table filtering" could have hidden the actual build; resolved: selections persist in URL state and remain visible in a **Selected Build Panel**.
 - "constraints" could have remained passive notes; resolved: the panel shows **Open Constraints** and supports **Constraint Jumps** back into the table.
-- "selected failures" could have been auto-corrected away; resolved: selected parts remain, and problems are aggregated in the **Build Issues Section**.
-- "issue summaries" could have become a mixed global pile; resolved: the **Build Issues Section** uses **Slot-Grouped Issues**.
-- "cross-slot issues" could have been forced into one owner; resolved: use **Relational Issue Echo** for multi-part problems.
+- "selected failures" could have been auto-corrected away; resolved: selected parts remain, and problems are aggregated on each part's **Part Issue List**.
+- "issue summaries" could have become a mixed global pile; resolved: findings use **Slot-Grouped Issues** on the part they belong to.
+- "a separate issues panel" duplicated what the part cards already show; resolved: findings render on the **Part Issue List** instead of a build-wide section.
+- "cross-slot issues" could have been duplicated on every implicated card; resolved: **Finding Ownership** attributes each finding to the single part whose data caused it.
 - "derived filters" could have become hidden locks; resolved: **Constraint Jumps** create **Editable Derived Filters**.
 - "constraints versus filters" could have been expressed only as labels; resolved: physical limits should be shown directly in controls via a **Constraint Overlay**.
 - "control overlays" could have shown only one threshold; resolved: **Constraint Overlays** should represent both hard-fail boundaries and conditional caution zones.
@@ -528,3 +558,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - "panel order" could have drifted with interaction history; resolved: the **Selected Build Panel** uses **Fixed Slot Order**.
 - "empty slots" could have vanished from the panel; resolved: the **Selected Build Panel** shows **Visible Empty Slots**.
 - "empty slot actions" could have appeared only when constraints existed; resolved: every empty slot has an **Empty Slot Action**.
+- "dismissing a warning" could have deleted the issue outright; resolved: an **Ignored Warning** stops affecting the verdict but stays listed on the **Part Issue List** with a restore action.
+- "ignore once versus ignore always" split one outcome into two controls; resolved: a single ignore writes to the **Warning Ignore State**, and every ignored row can be restored.
+- "always ignore" could have been stored per build or per selected part; resolved: the **Warning Ignore State** keys ignore state to the engine evidence code, so it follows the condition across builds.
+- "ignoring a failure" could have hidden a **Hard Conflict**; resolved: only `conditional` evidence can be ignored.

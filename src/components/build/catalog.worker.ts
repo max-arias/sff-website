@@ -38,7 +38,13 @@ type SearchRow = {
 
 type ClientMessage =
   | { base: string; requestId: number; type: "status" }
-  | { base: string; href: string; requestId: number; type: "view" };
+  | {
+      base: string;
+      href: string;
+      ignored: string[];
+      requestId: number;
+      type: "view";
+    };
 
 type WorkerMessage =
   | { requestId: number; status: DatabaseStatus; type: "status" }
@@ -294,7 +300,9 @@ self.onmessage = async (event: MessageEvent<ClientMessage>) => {
       requestId: message.requestId,
       status,
       type: "view",
-      view: await getBuildView(new URL(message.href), browserCatalogStore)
+      view: await getBuildView(new URL(message.href), browserCatalogStore, {
+        ignored: new Set(message.ignored),
+      })
     });
   } catch (error) {
     initialization = undefined;

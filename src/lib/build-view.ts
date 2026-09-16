@@ -15,10 +15,11 @@ import {
 import type { CasePart, FitVerdict, GenericPart, GpuPart } from "../types";
 import type { CatalogStore } from "./catalog-store";
 import {
-  evaluateBuildFitment as engineEvaluateBuildFitment,
   evaluateCandidateFitment as engineEvaluateCandidateFitment,
+  summarizeEvidence,
   type BuildContext,
 } from "../fitment/engine";
+import { issueTitle } from "../fitment/issue-copy";
 import type { FitmentEvidence } from "../fitment/types";
 import {
   dimensionNumber,
@@ -51,11 +52,26 @@ type FitmentSummary = {
   notes: string[];
   /** Evidence items that may map to table cells (those with a metric key). */
   cellEvidence: FitmentEvidence[];
+  /** Every non-pass evidence item, including ignored ones, for issue rendering. */
+  issues: BuildViewIssue[];
 };
 type SlotSpec = {
   label: string;
   value: string;
 };
+
+export interface BuildViewIssue {
+  code: string;
+  /** Short heading from the warning copy map. */
+  title: string;
+  /** Detailed sentence produced by the fitment engine. */
+  message: string;
+  verdict: "conditional" | "fail";
+  /** Hard conflicts are known physical constraints and cannot be ignored. */
+  dismissible: boolean;
+  /** True when the user has ignored this evidence code. */
+  ignored: boolean;
+}
 
 export interface BuildViewSlot {
   kind: SelectableKind;
@@ -69,6 +85,8 @@ export interface BuildViewSlot {
   verdict: DisplayVerdict;
   verdictCopy: string;
   verdictTooltip: string;
+  /** Every non-pass finding on this part, ignored ones included. */
+  issues: BuildViewIssue[];
   specs: SlotSpec[];
   clearUrl: string;
   browseUrl: string;
@@ -136,7 +154,6 @@ export interface BuildView {
   buildStatus: BuildStatus;
   buildStatusLabel: string;
   buildStatusCopy: string;
-  buildIssues: Array<{ kind: SelectableKind; label: string; issues: string[] }>;
   activeConstraintLabel: string;
   constraintMeters: Array<{
     label: string;
@@ -1783,9 +1800,15 @@ const PSU_FILTER_GROUP_ORDER = [
   "Physical",
 ];
 
+export interface BuildViewOptions {
+  /** Evidence codes the user has ignored, persisted per browser. */
+  ignored?: ReadonlySet<string>;
+}
+
 export async function getBuildView(
   url: URL,
   store: CatalogStore,
+  options: BuildViewOptions = {},
 ): Promise<BuildView> {
   const storeInstance = store;
   const state = parseBuildQuery(url);
@@ -1826,6 +1849,7 @@ export async function getBuildView(
     activePsu,
     activeMotherboard,
     activeRam,
+    ignored: options.ignored ?? new Set<string>(),
   };
 
   // Auto-populate GPU numeric filter defaults from the active case
@@ -1893,7 +1917,6 @@ export async function getBuildView(
     buildStatusLabel:
       buildStatus === "in-progress" ? "IN PROGRESS" : buildStatus.toUpperCase(),
     buildStatusCopy: buildStatusCopy(buildStatus),
-    buildIssues: buildIssues(ctx, selectedFitments),
     activeConstraintLabel: activeConstraintLabel(activeCase, activeGpu),
     constraintMeters: constraintMeters(ctx),
     kindTabs: tabOrder.map((kind) => ({
@@ -2124,13 +2147,17 @@ type EvalContext = {
   activePsu: GenericPart | null;
   activeMotherboard: GenericPart | null;
   activeRam: GenericPart | null;
+  ignored: ReadonlySet<string>;
 };
 
 function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
   const descriptor = slotOrder.find((slot) => slot.kind === kind)!;
   const id = ctx.state.selectedIds[kind] ?? "";
   const part = id ? (ctx.partIndex.get(id) ?? null) : null;
-  const verdict = slotVerdict(ctx, kind, part);
+  const summary = part
+    ? evaluateCandidateFitment(ctx, part, { findingsFor: kind })
+    : null;
+  const verdict = slotVerdict(ctx, kind, part, summary);
 
   return {
     kind,
@@ -2143,10 +2170,15 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
     note:
       id && !part
         ? "The id is still preserved in URL state, but the catalog can no longer resolve it."
-        : slotNote(ctx, kind),
+        : slotNote(summary),
     verdict,
     verdictCopy: verdictCopy(verdict),
     verdictTooltip: verdictTooltip(verdict),
+    // Active findings stay above the ones the user has already set aside.
+    // Array#sort is stable, so engine order holds within each group.
+    issues: [...(summary?.issues ?? [])].sort(
+      (a, b) => Number(a.ignored) - Number(b.ignored),
+    ),
     specs: slotSpecs(ctx, kind, part),
     clearUrl: buildUrl(ctx.state, { clearSlot: kind }),
     browseUrl: buildUrl(ctx.state, { kind }),
@@ -2305,72 +2337,6 @@ function buildStatusCopy(status: BuildStatus) {
   if (status === "conditional")
     return "Build has warnings — tight clearances, missing data, or practical risks.";
   return "Build contains at least one hard dimensional conflict.";
-}
-
-function buildIssues(
-  ctx: EvalContext,
-  selectedFitments: Array<{ kind: SelectableKind; summary: FitmentSummary }>,
-) {
-  const sections: Array<{
-    kind: SelectableKind;
-    label: string;
-    issues: string[];
-  }> = [];
-
-  selectedFitments
-    .filter(
-      ({ summary }) =>
-        summary.verdict !== "pass" &&
-        summary.verdict !== "unscored" &&
-        summary.messages.length,
-    )
-    .forEach(({ kind, summary }) => {
-      sections.push({
-        kind,
-        label: slotOrder.find((slot) => slot.kind === kind)!.label,
-        issues: summary.messages,
-      });
-    });
-
-  slotOrder.forEach(({ kind, label }) => {
-    const id = ctx.state.selectedIds[kind];
-    if (id && !ctx.partIndex.has(id)) {
-      sections.push({
-        kind,
-        label,
-        issues: [
-          `Selected ${label.toLowerCase()} id "${id}" could not be loaded from the current catalog.`,
-        ],
-      });
-    }
-  });
-
-  // This advisory is meaningful only for the fully selected case/GPU
-  // relationship. Merge it into the existing slot sections so it cannot
-  // create duplicate sections or duplicate messages.
-  if (ctx.activeCase && ctx.activeGpu) {
-    const riserIssue = engineEvaluateBuildFitment(buildContext(ctx)).evidence.find(
-      (e) => e.code === "requires-riser",
-    );
-    if (riserIssue) {
-      for (const kind of ["case", "gpu"] as const) {
-        const existing = sections.find((section) => section.kind === kind);
-        if (existing) {
-          if (!existing.issues.includes(riserIssue.message)) {
-            existing.issues.push(riserIssue.message);
-          }
-        } else {
-          sections.push({
-            kind,
-            label: slotOrder.find((slot) => slot.kind === kind)!.label,
-            issues: [riserIssue.message],
-          });
-        }
-      }
-    }
-  }
-
-  return sections;
 }
 
 /**
@@ -2846,32 +2812,27 @@ function buildTableNotice(_ctx: EvalContext, _state: BuildQueryState): string {
 function slotVerdict(
   ctx: EvalContext,
   kind: SelectableKind,
-  part: PartRecord | null = null,
+  part: PartRecord | null,
+  summary: FitmentSummary | null,
 ): DisplayVerdict {
-  if (part) {
-    const summary = evaluateCandidateFitment(ctx, part);
-    if (summary.verdict !== "unscored") return summary.verdict;
-    const totalSelected = Object.values(ctx.state.selectedIds).filter(
-      Boolean,
-    ).length;
-    if (kind === "case" && totalSelected > 1) return "pass";
-  }
+  if (!part || !summary) return "unscored";
+  if (summary.verdict !== "unscored") return summary.verdict;
+  const totalSelected = Object.values(ctx.state.selectedIds).filter(
+    Boolean,
+  ).length;
+  if (kind === "case" && totalSelected > 1) return "pass";
   return "unscored";
 }
 
-function slotNote(ctx: EvalContext, kind: SelectableKind) {
-  const id = ctx.state.selectedIds[kind];
-  const part = id ? ctx.partIndex.get(id) : null;
-  const summary = part ? evaluateCandidateFitment(ctx, part) : null;
-  if (summary?.messages.length && summary.verdict !== "pass")
-    return summary.messages[0];
-  if (summary?.notes.length) return summary.notes[0];
-  if (kind === "psu" && ctx.activeCase?.psu)
-    return `Constraint: ${ctx.activeCase.psu}`;
-  if (kind === "cpu-cooler" && ctx.activeCase?.dimensions.cpuCoolerHeightMm) {
-    return `Constraint: max ${formatValue(ctx.activeCase.dimensions.cpuCoolerHeightMm, "mm")}`;
-  }
-  return "";
+/**
+ * The card's advisory line. Findings that need action are listed separately as
+ * issues, so this only carries advisories that accompany a `pass` — a tight
+ * clearance, for example. The case's own envelope (PSU support, cooler height)
+ * is part of the case card's specs; repeating it here as a "constraint" read as
+ * a warning against a part that already satisfied it.
+ */
+function slotNote(summary: FitmentSummary | null) {
+  return summary?.notes[0] ?? "";
 }
 
 function fallbackNote(part: PartRecord) {
@@ -2911,16 +2872,14 @@ function fallbackNote(part: PartRecord) {
 function evaluateCandidateFitment(
   ctx: EvalContext,
   part: PartRecord,
-  options: { omitRiserAdvisory?: boolean } = {},
+  options: { omitRiserAdvisory?: boolean; findingsFor?: SelectableKind } = {},
 ): FitmentSummary {
   const build = buildContext(ctx);
-  const decision = engineEvaluateCandidateFitment(build, part as any);
-  if (options.omitRiserAdvisory && part.kind === "gpu") {
-    decision.evidence = decision.evidence.filter(
-      (e) => e.code !== "requires-riser",
-    );
-  }
-  return engineDecisionToSummary(decision);
+  const decision = engineEvaluateCandidateFitment(build, part);
+  const evidence = options.omitRiserAdvisory && part.kind === "gpu"
+    ? decision.evidence.filter((e) => e.code !== "requires-riser")
+    : decision.evidence;
+  return summarizeDecision(evidence, ctx.ignored, options.findingsFor ?? null);
 }
 
 function buildContext(ctx: EvalContext): BuildContext {
@@ -2934,24 +2893,51 @@ function buildContext(ctx: EvalContext): BuildContext {
   };
 }
 
-function engineDecisionToSummary(
-  decision: { verdict: string; evidence: FitmentEvidence[] },
+/**
+ * Reduce engine evidence to a renderable summary.
+ *
+ * Ignored codes are removed before the verdict is computed, so an ignored
+ * warning can bring a part back to `pass`. The verdict always covers every
+ * finding for the evaluated part, while the listed findings can be narrowed to
+ * the ones that part owns (`findingsFor`): a shared condition such as a riser
+ * requirement is listed once, on the part whose data caused it.
+ */
+function summarizeDecision(
+  evidence: FitmentEvidence[],
+  ignored: ReadonlySet<string>,
+  findingsFor: SelectableKind | null,
 ): FitmentSummary {
-  const messages = decision.evidence
-    .filter((e) => e.message && e.verdict !== "pass" && !e.advisory)
-    .map((e) => e.message);
-  const notes = decision.evidence
-    .filter((e) => e.advisory && e.message)
-    .map((e) => e.message);
-  const cellEvidence = decision.evidence.filter((e) => e.metric);
+  const active = evidence.filter(
+    (item) => item.verdict !== "conditional" || !ignored.has(item.code),
+  );
+  const owned = findingsFor
+    ? active.filter((item) => item.subject === findingsFor)
+    : active;
+  const issues: BuildViewIssue[] = [];
+  for (const item of evidence) {
+    if (item.verdict === "pass" || !item.message) continue;
+    if (findingsFor && item.subject !== findingsFor) continue;
+    // A stored code for a hard conflict stays inert: fails are never ignored.
+    const dismissible = item.verdict === "conditional";
+    issues.push({
+      code: item.code,
+      title: issueTitle(item.code, item.message),
+      message: item.message,
+      verdict: item.verdict,
+      dismissible,
+      ignored: dismissible && ignored.has(item.code),
+    });
+  }
 
-  if (!decision.evidence.length)
-    return { verdict: "unscored", messages: [], notes, cellEvidence };
-  if (decision.verdict === "fail")
-    return { verdict: "fail", messages, notes, cellEvidence };
-  if (decision.verdict === "conditional")
-    return { verdict: "conditional", messages, notes, cellEvidence };
-  return { verdict: "pass", messages: [], notes, cellEvidence };
+  return {
+    verdict: summarizeEvidence(active),
+    messages: owned
+      .filter((e) => e.message && e.verdict !== "pass" && !e.advisory)
+      .map((e) => e.message),
+    notes: owned.filter((e) => e.advisory && e.message).map((e) => e.message),
+    cellEvidence: owned.filter((e) => e.metric),
+    issues,
+  };
 }
 
 function emptyToDash(value: string) {

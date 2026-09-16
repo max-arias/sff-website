@@ -48,8 +48,8 @@ export class BrowserCatalogClient {
     };
   }
 
-  async getView(href: string): Promise<ViewResponse> {
-    const response = await this.request({ href, type: "view" });
+  async getView(href: string, ignored: readonly string[]): Promise<ViewResponse> {
+    const response = await this.request({ href, ignored, type: "view" });
     if (response.type !== "view") throw new Error("Catalog worker returned an unexpected response.");
     return { status: response.status, view: response.view };
   }
@@ -67,13 +67,19 @@ export class BrowserCatalogClient {
     this.pending.clear();
   }
 
-  private request(message: { href?: string; type: "status" | "view" }): Promise<WorkerResponse> {
+  private request(message: { href?: string; ignored?: readonly string[]; type: "status" | "view" }): Promise<WorkerResponse> {
     const requestId = this.nextRequestId++;
     const { promise, resolve, reject } = Promise.withResolvers<WorkerResponse>();
     this.pending.set(requestId, { resolve, reject });
     const base = window.location.href;
     if (message.type === "view" && message.href) {
-      this.worker.postMessage({ base, href: message.href, requestId, type: "view" });
+      this.worker.postMessage({
+        base,
+        href: message.href,
+        ignored: message.ignored ?? [],
+        requestId,
+        type: "view",
+      });
       return promise;
     }
     this.worker.postMessage({ base, requestId, type: "status" });

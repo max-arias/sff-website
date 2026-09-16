@@ -20,8 +20,8 @@ export interface FitmentEvidence {
   code: string;
   verdict: FitmentVerdict;
   message: string;
-  /** Part-kind slots this evidence applies to (e.g. ["gpu", "case"]). */
-  slots?: string[];
+  /** Part-kind slot this evidence is about (e.g. "case" for a riser requirement). */
+  subject?: string;
   /** Optional domain metric key for the dimension/spec this evidence evaluates. */
   metric?: string;
   /** True when this evidence is an advisory/note, not a hard issue. */

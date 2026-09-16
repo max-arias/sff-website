@@ -59,6 +59,8 @@ The current release scope supports:
 - Building a full multi-slot build configuration with fitment evaluation across all selected parts.
 - Selecting incompatible combinations intentionally.
 - Showing exact fit issues and warning messages.
+- Showing each selected part's warnings and errors on that part's card in the build panel, with a per-warning ignore control. A finding that involves two parts is listed once, on the part whose data caused it.
+- Letting users ignore a warning they have already verified, so the build stops reporting a warning they have resolved. Hard conflicts (`fail`) stay visible and cannot be ignored.
 - Displaying clearance values for case, GPU, cooler, PSU, and motherboard dimensions.
 - Hiding rows with no fitment-relevant data from the default `/build` table while keeping them available through the URL-backed **Show sparse rows** toggle.
 - Storing production data in Cloudflare D1 across per-kind tables (`cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, `ram`).
@@ -113,6 +115,8 @@ The preferred direction is:
 - Ghost incompatible parts instead of hiding them.
 - Hide rows that have no fitment-relevant evidence by default, with a visible toggle to include them when auditing the full catalog; this must not hide `pass`, `conditional`, or `fail` rows.
 - Explain every failure with a concrete reason.
+- Let a user dismiss a warning they have verified, since a researched riser cable or confirmed slot mode is no longer an open question. Keep the dismissed warning on the part card marked as ignored, with a restore control, instead of deleting it.
+- Keep hard conflicts non-negotiable: `fail` stays visible and cannot be dismissed.
 - Let users choose invalid combinations so they can learn why they fail.
 - Treat warnings as first-class information, not footnotes.
 - Make autocomplete labels specific enough to distinguish real variants, not just family names.

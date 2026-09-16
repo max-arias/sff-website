@@ -110,7 +110,7 @@ export function evaluateGpuAgainstCase(
       verdict: "conditional",
       message:
         "This case may not support a discrete GPU; the source row does not list a clear GPU bay.",
-      slots: ["gpu", "case"],
+      subject: "case",
     });
   }
 
@@ -124,7 +124,7 @@ export function evaluateGpuAgainstCase(
       verdict: "fail",
       message: "This case appears to support low-profile GPUs only.",
       metric: "pcieSlots",
-      slots: ["gpu", "case"],
+      subject: "case",
     });
   }
 
@@ -134,7 +134,7 @@ export function evaluateGpuAgainstCase(
       verdict: "conditional",
       message:
         "Sandwich layout clearances can change with GPU slot mode; verify the selected mode.",
-      slots: ["gpu", "case"],
+      subject: "case",
       advisory: true,
     });
   }
@@ -144,7 +144,7 @@ export function evaluateGpuAgainstCase(
       code: "requires-riser",
       verdict: "conditional",
       message: "This case requires a GPU riser.",
-      slots: ["gpu", "case"],
+      subject: "case",
       advisory: true,
     });
   }
@@ -155,7 +155,7 @@ export function evaluateGpuAgainstCase(
       verdict: "conditional",
       message:
         "GPU riser support is optional or configuration-dependent.",
-      slots: ["gpu", "case"],
+      subject: "case",
       advisory: true,
     });
   }
@@ -166,7 +166,7 @@ export function evaluateGpuAgainstCase(
       verdict: "conditional",
       message:
         "This GPU is watercooled; radiator, tubing, and pump clearance are not validated.",
-      slots: ["gpu", "case"],
+      subject: "gpu",
       advisory: true,
     });
   }
@@ -180,7 +180,7 @@ export function evaluateGpuAgainstCase(
       code: "power-connector-psu-warning",
       verdict: "conditional",
       message: `GPU needs PCIe power (${gpu.pciePins}); PSU support is not validated for ${casePart.psu}.`,
-      slots: ["gpu", "case"],
+      subject: "case",
       advisory: true,
     });
   }
@@ -190,7 +190,7 @@ export function evaluateGpuAgainstCase(
       code: "case-status",
       verdict: "conditional",
       message: `Case status from source list: ${casePart.status}.`,
-      slots: ["case"],
+      subject: "case",
       advisory: true,
     });
   }
@@ -205,7 +205,7 @@ export function evaluateGpuAgainstCase(
     "GPU length",
     gpu.dimensions.lengthMm,
     casePart.dimensions.gpuLengthMm,
-    { metricKey: "gpuLengthMm", tightFitThreshold: 2, slots: ["gpu", "case"] },
+    { metricKey: "gpuLengthMm", tightFitThreshold: 2, subject: "gpu" },
   );
   compareMaxDimension(
     evidence,
@@ -213,7 +213,7 @@ export function evaluateGpuAgainstCase(
     "GPU width",
     gpu.dimensions.widthMm,
     casePart.dimensions.gpuWidthMm,
-    { metricKey: "gpuWidthMm", slots: ["gpu", "case"] },
+    { metricKey: "gpuWidthMm", subject: "gpu" },
   );
   compareMaxDimension(
     evidence,
@@ -221,7 +221,7 @@ export function evaluateGpuAgainstCase(
     "GPU thickness",
     gpu.dimensions.thicknessMm,
     casePart.dimensions.gpuThicknessMm,
-    { metricKey: "gpuThicknessMm", slots: ["gpu", "case"] },
+    { metricKey: "gpuThicknessMm", subject: "gpu" },
   );
   compareMaxDimension(
     evidence,
@@ -229,7 +229,7 @@ export function evaluateGpuAgainstCase(
     "PCIe bracket slot count",
     gpu.dimensions.pcieSlots,
     casePart.dimensions.pcieSlots,
-    { metricKey: "pcieSlots", tightFitThreshold: 0, slots: ["gpu", "case"] },
+    { metricKey: "pcieSlots", tightFitThreshold: 0, subject: "gpu" },
   );
 
   // Add a pass signal if all dimension checks cleared (no new evidence was added
@@ -242,7 +242,7 @@ export function evaluateGpuAgainstCase(
       code: "gpu-dimensions-fit",
       verdict: "pass",
       message: "GPU dimensions fit the case GPU envelope.",
-      slots: ["gpu", "case"],
+      subject: "gpu",
     });
   }
 
@@ -258,12 +258,12 @@ function compareMaxDimension(
   opts?: {
     tightFitThreshold?: number;
     metricKey?: string;
-    slots?: string[];
+    subject?: string;
   },
 ) {
   const tightFitThreshold = opts?.tightFitThreshold ?? TIGHT_FIT_MM;
   const metric = opts?.metricKey;
-  const slots = opts?.slots;
+  const subject = opts?.subject;
 
   if (used === null || limit === null) {
     evidence.push({
@@ -271,7 +271,7 @@ function compareMaxDimension(
       verdict: "conditional",
       message: `${label} cannot be fully checked because the source data is incomplete.`,
       metric,
-      slots,
+      subject,
     });
     return;
   }
@@ -284,7 +284,7 @@ function compareMaxDimension(
       verdict: "fail",
       message: `${label} exceeds the case limit by ${Math.abs(clearance)}mm.`,
       metric,
-      slots,
+      subject,
     });
     return;
   }
@@ -295,7 +295,7 @@ function compareMaxDimension(
       verdict: "pass",
       message: `${label} has only ${clearance}mm of clearance.`,
       metric,
-      slots,
+      subject,
       advisory: true,
     });
   }
@@ -321,7 +321,7 @@ export function evaluateCpuCoolerAgainstCase(
       verdict: "conditional",
       message: "Case CPU cooler height limit is unknown.",
       metric: "coolerHeight",
-      slots: ["cpu-cooler", "case"],
+      subject: "case",
     };
   }
 
@@ -331,7 +331,7 @@ export function evaluateCpuCoolerAgainstCase(
       verdict: "conditional",
       message: `Cooler height is unknown; case max is ${formatValue(maxHeight, "mm")}.`,
       metric: "coolerHeight",
-      slots: ["cpu-cooler", "case"],
+      subject: "cpu-cooler",
     };
   }
 
@@ -341,7 +341,7 @@ export function evaluateCpuCoolerAgainstCase(
       verdict: "fail",
       message: `Cooler height ${formatValue(coolerHeight, "mm")} exceeds case max ${formatValue(maxHeight, "mm")}.`,
       metric: "coolerHeight",
-      slots: ["cpu-cooler", "case"],
+      subject: "cpu-cooler",
     };
   }
 
@@ -349,7 +349,7 @@ export function evaluateCpuCoolerAgainstCase(
     code: "cooler-height-fits",
     verdict: "pass",
     message: `Cooler height ${formatValue(coolerHeight, "mm")} fits case max ${formatValue(maxHeight, "mm")}.`,
-    slots: ["cpu-cooler", "case"],
+    subject: "cpu-cooler",
   };
 }
 
@@ -371,7 +371,7 @@ export function evaluatePsuAgainstCase(
       verdict: "conditional",
       message: `PSU form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and PSU form factor is "${psuFormFactor || "unknown"}".`,
       metric: "psuFormFactor",
-      slots: ["psu", "case"],
+      subject: "psu",
     };
   }
 
@@ -381,7 +381,7 @@ export function evaluatePsuAgainstCase(
       verdict: "conditional",
       message: `Custom PSU support requires manual verification (${psuFormFactor} in ${caseSupport}).`,
       metric: "psuFormFactor",
-      slots: ["psu", "case"],
+      subject: "psu",
     };
   }
 
@@ -391,7 +391,7 @@ export function evaluatePsuAgainstCase(
       verdict: "pass",
       message: `PSU form factor ${psuFormFactor} is supported by case envelope ${caseSupport}.`,
       metric: "psuFormFactor",
-      slots: ["psu", "case"],
+      subject: "psu",
     };
   }
 
@@ -400,7 +400,7 @@ export function evaluatePsuAgainstCase(
     verdict: "fail",
     message: `PSU form factor ${psuFormFactor} is not supported by case envelope ${caseSupport}.`,
     metric: "psuFormFactor",
-    slots: ["psu", "case"],
+    subject: "psu",
   };
 }
 
@@ -422,7 +422,7 @@ export function evaluateMotherboardAgainstCase(
       verdict: "conditional",
       message: `Motherboard form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and board form factor is "${boardFormFactor || "unknown"}".`,
       metric: "motherboardFormFactor",
-      slots: ["motherboard", "case"],
+      subject: "motherboard",
     };
   }
 
@@ -432,7 +432,7 @@ export function evaluateMotherboardAgainstCase(
       verdict: "conditional",
       message: `Custom motherboard support requires manual verification (${boardFormFactor} in ${caseSupport}).`,
       metric: "motherboardFormFactor",
-      slots: ["motherboard", "case"],
+      subject: "motherboard",
     };
   }
 
@@ -442,7 +442,7 @@ export function evaluateMotherboardAgainstCase(
       verdict: "pass",
       message: `Motherboard form factor ${boardFormFactor} is supported by case envelope ${caseSupport}.`,
       metric: "motherboardFormFactor",
-      slots: ["motherboard", "case"],
+      subject: "motherboard",
     };
   }
 
@@ -451,7 +451,7 @@ export function evaluateMotherboardAgainstCase(
     verdict: "fail",
     message: `Motherboard form factor ${boardFormFactor} is not supported by case envelope ${caseSupport}.`,
     metric: "motherboardFormFactor",
-    slots: ["motherboard", "case"],
+    subject: "motherboard",
   };
 }
 
@@ -471,7 +471,7 @@ export function evaluateRamAgainstMotherboard(
       verdict: "conditional",
       message: `RAM type cannot be fully checked; RAM is "${ramType || "unknown"}" and motherboard requires "${motherboardRamType || "unknown"}".`,
       metric: "ramType",
-      slots: ["ram", "motherboard"],
+      subject: "ram",
     };
   }
 
@@ -483,7 +483,7 @@ export function evaluateRamAgainstMotherboard(
       verdict: "pass",
       message: `${ramType} RAM matches motherboard memory type ${motherboardRamType}.`,
       metric: "ramType",
-      slots: ["ram", "motherboard"],
+      subject: "ram",
     };
   }
 
@@ -492,7 +492,7 @@ export function evaluateRamAgainstMotherboard(
     verdict: "fail",
     message: `${ramType} RAM does not match motherboard memory type ${motherboardRamType}.`,
     metric: "ramType",
-    slots: ["ram", "motherboard"],
+    subject: "ram",
   };
 }
 
@@ -516,7 +516,7 @@ export function evaluateRamAgainstCpuCooler(
       verdict: "pass",
       message: "CPU cooler lists no RAM height limit.",
       metric: "ramHeight",
-      slots: ["ram", "cpu-cooler"],
+      subject: "ram",
     };
   }
 
@@ -526,7 +526,7 @@ export function evaluateRamAgainstCpuCooler(
       verdict: "conditional",
       message: `RAM clearance cannot be fully checked; RAM height is ${formatValue(ramHeight, "mm")} and cooler clearance is ${clearanceText || "unknown"}.`,
       metric: "ramHeight",
-      slots: ["ram", "cpu-cooler"],
+      subject: "ram",
     };
   }
 
@@ -536,7 +536,7 @@ export function evaluateRamAgainstCpuCooler(
       verdict: "fail",
       message: `RAM height ${formatValue(ramHeight, "mm")} exceeds CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
       metric: "ramHeight",
-      slots: ["ram", "cpu-cooler"],
+      subject: "ram",
     };
   }
 
@@ -545,7 +545,7 @@ export function evaluateRamAgainstCpuCooler(
     verdict: "pass",
     message: `RAM height ${formatValue(ramHeight, "mm")} fits CPU cooler RAM clearance ${formatValue(clearance, "mm")}.`,
     metric: "ramHeight",
-    slots: ["ram", "cpu-cooler"],
+    subject: "ram",
   };
 }
 
