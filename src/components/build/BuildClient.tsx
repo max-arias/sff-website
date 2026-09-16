@@ -23,7 +23,7 @@ function CatalogValue(props: { value: string }) {
   return isPsuBadge(props.value) ? <span innerHTML={props.value} /> : props.value;
 }
 
-export default function BuildClient() {
+export default function BuildClient(props: { siteOrigin?: string }) {
   const [view, setView] = createSignal<BuildView>();
   const [status, setStatus] = createSignal<BrowserCatalogStatus>();
   const [error, setError] = createSignal<string>();
@@ -91,7 +91,7 @@ export default function BuildClient() {
     setLoading(true);
     setError(undefined);
     try {
-      const next = await catalog.getView(resolved, ignoredWarnings());
+      const next = await catalog.getView(resolved, ignoredWarnings(), props.siteOrigin);
       if (latestHref !== resolved) return;
       setView(next.view);
       setStatus(next.status);

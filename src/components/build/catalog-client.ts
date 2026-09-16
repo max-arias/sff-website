@@ -48,8 +48,8 @@ export class BrowserCatalogClient {
     };
   }
 
-  async getView(href: string, ignored: readonly string[]): Promise<ViewResponse> {
-    const response = await this.request({ href, ignored, type: "view" });
+  async getView(href: string, ignored: readonly string[], siteOrigin?: string): Promise<ViewResponse> {
+    const response = await this.request({ href, ignored, siteOrigin, type: "view" });
     if (response.type !== "view") throw new Error("Catalog worker returned an unexpected response.");
     return { status: response.status, view: response.view };
   }
@@ -67,7 +67,7 @@ export class BrowserCatalogClient {
     this.pending.clear();
   }
 
-  private request(message: { href?: string; ignored?: readonly string[]; type: "status" | "view" }): Promise<WorkerResponse> {
+  private request(message: { href?: string; ignored?: readonly string[]; siteOrigin?: string; type: "status" | "view" }): Promise<WorkerResponse> {
     const requestId = this.nextRequestId++;
     const { promise, resolve, reject } = Promise.withResolvers<WorkerResponse>();
     this.pending.set(requestId, { resolve, reject });
@@ -78,6 +78,7 @@ export class BrowserCatalogClient {
         href: message.href,
         ignored: message.ignored ?? [],
         requestId,
+        siteOrigin: message.siteOrigin,
         type: "view",
       });
       return promise;

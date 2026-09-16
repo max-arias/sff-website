@@ -43,6 +43,7 @@ type ClientMessage =
       href: string;
       ignored: string[];
       requestId: number;
+      siteOrigin?: string;
       type: "view";
     };
 
@@ -302,6 +303,7 @@ self.onmessage = async (event: MessageEvent<ClientMessage>) => {
       type: "view",
       view: await getBuildView(new URL(message.href), browserCatalogStore, {
         ignored: new Set(message.ignored),
+        siteOrigin: message.siteOrigin,
       })
     });
   } catch (error) {

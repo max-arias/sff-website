@@ -474,6 +474,36 @@ test("part list text skips unselected slots", async () => {
   assert.deepEqual(partLines, ["Case: TestCo Test Case One"]);
 });
 
+test("part list text uses the configured site origin", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c" })],
+    gpus: [],
+    parts: [],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost:4321/build?case=c&kind=case"),
+    store,
+    { siteOrigin: "https://sff.maxarias.com" },
+  );
+
+  assert.equal(
+    view.partListText.split("\n")[0],
+    "SFF Builder Part List: https://sff.maxarias.com/build?case=c&kind=case",
+  );
+});
+
+test("a misconfigured site origin falls back to the browsed URL", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [fakeCase({ id: "c" })],
+    gpus: [],
+    parts: [],
+  });
+  const url = new URL("http://localhost:4321/build?case=c&kind=case");
+  const view = await getBuildView(url, store, { siteOrigin: "sff.maxarias.com" });
+
+  assert.equal(view.partListText.split("\n")[0], `SFF Builder Part List: ${url.href}`);
+});
+
 test("hard conflicts cannot be ignored", async () => {
   const store = new InMemoryCatalogStore({
     cases: [

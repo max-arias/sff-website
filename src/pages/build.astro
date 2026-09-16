@@ -1,4 +1,5 @@
 ---
+import { SITE_ORIGIN } from "astro:env/server";
 import BuildClient from "../components/build/BuildClient";
 import BaseLayout from "../layouts/BaseLayout.astro";
 ---
@@ -7,5 +8,5 @@ import BaseLayout from "../layouts/BaseLayout.astro";
   title="SFF Builder | Build"
   description="A replayable fitment workspace for selecting parts, inspecting constraints, and scanning pass, conditional, and fail rows."
 >
-  <BuildClient client:only="solid" />
+  <BuildClient client:only="solid" siteOrigin={SITE_ORIGIN} />
 </BaseLayout>

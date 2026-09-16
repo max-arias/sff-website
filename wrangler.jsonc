@@ -3,6 +3,9 @@
   "name": "sff-pc-builder",
   "compatibility_date": "2026-05-03",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SITE_ORIGIN": "https://sff.maxarias.com"
+  },
   "assets": {
     "directory": "./dist"
   },
