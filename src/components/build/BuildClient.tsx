@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount }
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { BuildView, BuildViewNumericFilter } from "../../lib/build-view";
 import { issueDetail, issueTitleForCode } from "../../fitment/issue-copy";
+import { dataSources } from "../../lib/data-sources";
 import { readIgnoredWarnings, writeIgnoredWarnings } from "../../lib/ignored-warning-storage";
 import { BrowserCatalogClient, type BrowserCatalogStatus } from "./catalog-client";
 
@@ -280,7 +281,7 @@ export default function BuildClient(props: { siteOrigin?: string }) {
           };
 
           return <>
-            <div class="flex items-center justify-end max-w-[80rem] mx-auto px-4 lg:px-6 pt-3 lg:hidden">
+            <div class="flex items-center justify-end max-w-[80rem] mx-auto px-4 lg:px-6 pr-14 lg:pr-6 pt-3 lg:hidden">
               <label for="build-drawer-toggle" class="btn btn-ghost btn-sm">
                 <svg viewBox="0 0 24 24" aria-hidden="true" class="w-4 h-4">
                   <path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" />
@@ -642,8 +643,9 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                     </Show>
                   </div>
 
-                  <Show when={ignoredWarnings().length > 0}>
-                    <details class="mt-auto mx-4 mb-5 p-3 border border-base-300 rounded-btn bg-base-200/60">
+                  <div class="mt-auto flex flex-col gap-3 mx-4 mb-4">
+                    <Show when={ignoredWarnings().length > 0}>
+                      <details class="p-3 border border-base-300 rounded-btn bg-base-200/60">
                       <summary class="cursor-pointer font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/50">
                         {ignoredWarnings().length} ignored warning{ignoredWarnings().length === 1 ? "" : "s"}
                       </summary>
@@ -664,8 +666,35 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                         class="btn btn-ghost btn-xs mt-1 font-mono text-[0.6rem] uppercase tracking-[0.04em]"
                         onClick={restoreAllIgnoredWarnings}
                       >Restore all</button>
-                    </details>
-                  </Show>
+                      </details>
+                    </Show>
+
+                    <footer class="border-t border-base-300 pt-3">
+                      <p class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.08em] text-base-content/50">Data sources</p>
+                      <ul class="mt-1.5 flex flex-col gap-1 text-[0.7rem] leading-snug">
+                        <For each={dataSources}>{(source) =>
+                          <li>
+                            <a
+                              class="link link-hover font-medium text-base-content/60"
+                              href={source.href}
+                              target="_blank"
+                              rel="noreferrer"
+                            >{source.label}</a>
+                            <span class="text-base-content/40"> — {source.note}</span>
+                          </li>
+                        }</For>
+                      </ul>
+                      <p class="mt-3 text-[0.7rem] text-base-content/50">
+                        Built by{" "}
+                        <a
+                          class="link link-hover font-medium text-base-content/70"
+                          href="https://maxarias.com"
+                          target="_blank"
+                          rel="noreferrer"
+                        >maxarias.com</a>
+                      </p>
+                    </footer>
+                  </div>
                   <Show when={status()}>{(catalogStatus) => <p class="px-5 pb-4 font-mono text-[0.6rem] uppercase tracking-[0.06em] text-base-content/40">{catalogStatus().rows.toLocaleString()} local records · {catalogStatus().downloaded ? "downloaded" : "ready"}</p>}</Show>
                 </aside>
               </div>

@@ -78,6 +78,19 @@ Supported relationship engines:
 
 Rules return `pass`, `fail`, or `conditional`. Missing or ambiguous source data should produce visible warnings rather than silent filtering.
 
-## Data Attribution (Near-Future Goal)
+## Data Attribution
 
-Part records currently carry source workbook provenance (sheet name, row number, product/seller links). A near-future goal is to formalize data attribution so every measurement, spec, and claim visible in the catalog is traceable to its original source — whether that is a manufacturer spec sheet, community measurement, forum post, or spreadsheet entry. This attribution layer is not yet surfaced in the current UI but the import pipeline preserves the raw link and reference data needed to support it.
+The build panel credits the sources the catalog is drawn from: the SFF PC Master
+List workbook, the PSU tier list, Cybenetics efficiency figures, HWBusters
+reviews, and smallformfactor.net case links. That list lives in
+`src/lib/data-sources.ts`, which also owns the workbook id the intake fetches.
+
+Per-record attribution is still unfinished. The import pipeline preserves source
+workbook provenance (sheet name, row number, product and seller links), but the
+per-kind D1 tables do not store those links, so the browser artifact cannot show
+where an individual measurement came from. Hyperlink-only cells are the visible
+consequence: `cases.sff_net_link` is populated for 117 of 1,119 rows because
+those cells carry text, while `psus.cybenetics_report_url` and
+`psus.efficiency_80plus_report` are empty because the intake reads cell text
+rather than the hyperlink target. Surfacing per-claim provenance needs those
+links persisted as columns first.

@@ -172,7 +172,6 @@ export interface BuildView {
   tableHeaders: BuildViewTableHeader[];
   rows: BuildViewRow[];
   totalRows: number;
-  psuTierSourceUrl: string;
   activeFilterChips: Array<{
     label: string;
     href: string;
@@ -1748,8 +1747,6 @@ const CASE_INTENT_OPTIONS: Array<{ value: CaseIntent; label: string; tooltip: st
 
 import { FILTER_GROUPS } from "./build-filter-params";
 
-const psuTierSourceUrl =
-  "https://docs.google.com/spreadsheets/d/1akCHL7Vhzk_EhrpIGkz8zTEvYfLDcaSpZRB6Xt6JWkc/edit";
 const psuTokenAliases: Record<string, string> = {
   sfx: "sfx",
   sfxl: "sfxl",
@@ -1950,7 +1947,6 @@ export async function getBuildView(
     tableHeaders: tableHeaders(state),
     rows,
     totalRows,
-    psuTierSourceUrl,
     activeFilterChips: buildFilterChips(state),
     tableNotice: buildTableNotice(ctx, state),
   };

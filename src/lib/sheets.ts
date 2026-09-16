@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { masterListSheetId } from "./data-sources";
 import { fetchPsuTierEntries } from "./psu-tier-list";
 import type {
   AvailabilityStatus,
@@ -10,8 +11,6 @@ import type {
   RawSheetRow,
 } from "../types";
 
-const SHEET_ID = "1AddRvGWJ_f4B6UC7_IftDiVudVc8CJ8sxLUqlxVsCz4";
-
 export const SFF_SHEETS = {
   cases: ["SFF Case <10L", "SFF Case 10L-20L"],
   gpus: ["SFF GPU <215mm", "GPU >215mm"],
@@ -20,7 +19,7 @@ export const SFF_SHEETS = {
 export const SFF_INDEX_SHEET = "Sheets";
 
 function sheetXlsxUrl() {
-  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=xlsx`;
+  return `https://docs.google.com/spreadsheets/d/${masterListSheetId}/export?format=xlsx`;
 }
 
 function stableId(parts: Array<string | number | null | undefined>) {
