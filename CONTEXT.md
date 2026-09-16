@@ -256,6 +256,10 @@ _Avoid_: Per-build dismissal, server-side suppression, expiring acknowledgement
 The code-to-friendly-text map that gives each engine evidence code a stable short heading for issue rendering, with unmapped codes falling back to the engine message.
 _Avoid_: Inline per-component warning text, copy duplicated between engine and UI
 
+**Copyable Part List**:
+The plain-text summary of the current **Build Configuration** that "Copy your build" puts on the clipboard: a title line carrying the **URL Build State**, one line per selected **Role Slot** in **Fixed Slot Order**, and a provenance line. It carries only what the **Component Catalog** knows — no prices, no parts the product does not model — and it is generated, never stored.
+_Avoid_: Saved build, exported project file, catalog-wide shopping list
+
 ## Relationships
 
 - The **Component Catalog** supplies the part records used by the **Fitment Engine**
@@ -323,6 +327,7 @@ _Avoid_: Inline per-component warning text, copy duplicated between engine and U
 - An **Ignored Warning** is excluded from verdict computation but remains listed on its **Part Issue List** with a restore action
 - **Ignored Warnings** live in the **Warning Ignore State** and are a browser-local preference, not part of **URL Build State**
 - Each engine evidence code should have an entry in the **Warning Copy Map** for issue rendering
+- The **Copyable Part List** is generated from the current **Build Configuration** and carries its **URL Build State**, so a pasted list still points back to the build
 
 ## Example dialogue
 

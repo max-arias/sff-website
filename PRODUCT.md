@@ -60,6 +60,7 @@ The current release scope supports:
 - Selecting incompatible combinations intentionally.
 - Showing exact fit issues and warning messages.
 - Showing each selected part's warnings and errors on that part's card in the build panel, with a per-warning ignore control. A finding that involves two parts is listed once, on the part whose data caused it.
+- Copying the selected build as a plain-text part list for sharing, carrying the build URL and one line per selected part.
 - Letting users ignore a warning they have already verified, so the build stops reporting a warning they have resolved. Hard conflicts (`fail`) stay visible and cannot be ignored.
 - Displaying clearance values for case, GPU, cooler, PSU, and motherboard dimensions.
 - Hiding rows with no fitment-relevant data from the default `/build` table while keeping them available through the URL-backed **Show sparse rows** toggle.

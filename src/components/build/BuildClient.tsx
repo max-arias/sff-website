@@ -36,8 +36,10 @@ export default function BuildClient() {
   const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
   const [scrollAttached, setScrollAttached] = createSignal(false);
   const [ignoredWarnings, setIgnoredWarnings] = createSignal<string[]>(readIgnoredWarnings());
+  const [copiedBuild, setCopiedBuild] = createSignal(false);
   let catalog: BrowserCatalogClient | undefined;
   let latestHref: string | undefined;
+  let copyTimer: number | undefined;
   let searchTimer: number | undefined;
   const filterTimers = new Map<string, number>();
 
@@ -111,11 +113,6 @@ export default function BuildClient() {
     void loadView(href, true);
   };
 
-  const clearAllFilters = (event: MouseEvent, href: string) => {
-    setNumericDrafts({});
-    follow(event, href);
-  };
-
   const updateQuery = (name: string, value: string | undefined) => {
     const url = new URL(window.location.href);
     if (value) url.searchParams.set(name, value);
@@ -166,6 +163,33 @@ export default function BuildClient() {
   };
 
   /**
+   * Copies the build list. The async clipboard API needs a secure context and a
+   * granted permission, so a hidden textarea covers the browsers that refuse it.
+   */
+  const copyBuild = async () => {
+    const text = view()?.partListText;
+    if (!text) return;
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      const scratch = document.createElement("textarea");
+      scratch.value = text;
+      scratch.setAttribute("readonly", "");
+      scratch.style.position = "fixed";
+      scratch.style.opacity = "0";
+      document.body.appendChild(scratch);
+      scratch.select();
+      copied = document.execCommand("copy");
+      scratch.remove();
+    }
+    setCopiedBuild(copied);
+    window.clearTimeout(copyTimer);
+    copyTimer = window.setTimeout(() => setCopiedBuild(false), 2000);
+  };
+
+  /**
    * Numeric inputs render from the draft so typing is not clobbered by the
    * round-trip, and apply through the debounce so a filter lands once the user
    * pauses instead of on blur.
@@ -202,6 +226,7 @@ export default function BuildClient() {
     document.addEventListener("keydown", onKeydown);
     onCleanup(() => {
       window.clearTimeout(searchTimer);
+      window.clearTimeout(copyTimer);
       for (const timer of filterTimers.values()) window.clearTimeout(timer);
       filterTimers.clear();
       desktopQuery.removeEventListener("change", onBreakpoint);
@@ -244,13 +269,14 @@ export default function BuildClient() {
           const actionHeader = () => currentView().tableHeaders.find((header) => header.label === "Action");
           const dataTableHeaders = () => currentView().tableHeaders.filter((header) => header.label !== "Action");
           const hasAnySelection = () => currentView().slots.some((slot) => slot.id);
+          // Only the two targeted nudges survive: the generic "add more parts"
+          // line was replaced by the copy-build action below the parts.
           const sidebarHint = () => {
             const hasCase = currentView().slots.find((slot) => slot.kind === "case")?.id;
             const hasGpu = currentView().slots.find((slot) => slot.kind === "gpu")?.id;
-            if (!hasCase && !hasGpu) return "Add more parts from the table";
             if (hasCase && !hasGpu) return "Select a GPU to check case fitment";
             if (!hasCase && hasGpu) return "Select a case to check GPU fitment";
-            return "Add more parts from the table";
+            return "";
           };
 
           return <>
@@ -599,7 +625,20 @@ export default function BuildClient() {
                           </div>
                         </div>
                       }</For>
-                      <Show when={currentView().slots.some((slot) => !slot.id)}><p class="text-xs text-base-content/50 pt-2 pb-1 text-center font-medium">{sidebarHint()}</p></Show>
+                      <Show when={sidebarHint()}>
+                        <p class="text-xs text-base-content/50 pt-2 text-center font-medium">{sidebarHint()}</p>
+                      </Show>
+                      <button
+                        type="button"
+                        class="btn btn-primary btn-sm w-full gap-2 mt-1"
+                        aria-live="polite"
+                        onClick={copyBuild}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" class="w-4 h-4">
+                          <path d="M9 4h6v3H9zM7 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span>{copiedBuild() ? "Copied to clipboard" : "Copy your build"}</span>
+                      </button>
                     </Show>
                   </div>
 
