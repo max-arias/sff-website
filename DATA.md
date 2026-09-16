@@ -80,17 +80,25 @@ Rules return `pass`, `fail`, or `conditional`. Missing or ambiguous source data 
 
 ## Data Attribution
 
-The build panel credits the sources the catalog is drawn from: the SFF PC Master
-List workbook, the PSU tier list, Cybenetics efficiency figures, HWBusters
-reviews, and smallformfactor.net case links. That list lives in
+The build panel credits the sources whose values reach the catalog: the SFF PC
+Master List workbook, the PSU tier list, and Cybenetics (PSU ETA and Lambda
+grades, shown as the `Cyb η` and `Cyb λ` columns). That list lives in
 `src/lib/data-sources.ts`, which also owns the workbook id the intake fetches.
 
-Per-record attribution is still unfinished. The import pipeline preserves source
-workbook provenance (sheet name, row number, product and seller links), but the
-per-kind D1 tables do not store those links, so the browser artifact cannot show
-where an individual measurement came from. Hyperlink-only cells are the visible
-consequence: `cases.sff_net_link` is populated for 117 of 1,119 rows because
-those cells carry text, while `psus.cybenetics_report_url` and
-`psus.efficiency_80plus_report` are empty because the intake reads cell text
-rather than the hyperlink target. Surfacing per-claim provenance needs those
-links persisted as columns first.
+Sources named in the workbook but not credited are those the pipeline cannot yet
+surface. The intake reads cell *text*, not the hyperlink target, so link-only
+cells arrive as their visible label — the word "Link" — or as empty:
+
+```txt
+psus.review_by_aris            "Link"   58/261   rendered as the word "Link"
+cases.sff_net_link             "Link"  117/1119   no column renders it
+psus.cybenetics_report_url     ""        0/261
+psus.efficiency_80plus_report  ""        0/261
+```
+
+The hyperlink targets themselves are in the workbook and in
+`.data/intake-snapshot.json` (hwbusters.com, smallformfactor.net,
+clearesult.com, cybenetics.com), but no per-kind table stores them, so the
+browser artifact has no URL to link. The same gap empties `productUrl` and
+`sellerUrl` for every part. Crediting a source, and linking a record to its
+origin, needs those hyperlink targets persisted as columns first.
