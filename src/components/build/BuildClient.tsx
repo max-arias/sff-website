@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import type { BuildView, BuildViewNumericFilter } from "../../lib/build-view";
+import type { BuildView, BuildViewNumericFilter, BuildViewRow } from "../../lib/build-view";
 import { issueDetail, issueTitleForCode } from "../../fitment/issue-copy";
 import { dataSources } from "../../lib/data-sources";
 import { readIgnoredWarnings, writeIgnoredWarnings } from "../../lib/ignored-warning-storage";
@@ -9,8 +9,47 @@ import { BrowserCatalogClient, type BrowserCatalogStatus } from "./catalog-clien
 const sparseRowsTooltip = "Rows without fitment-relevant data are hidden by default. Turn this on to include them.";
 
 /** Estimated row height in px; the virtualizer measures real heights as rows mount. */
-const tableRowHeight = 44;
-const cardRowHeight = 260;
+const tableRowHeight = 41;
+const cardRowHeight = 304;
+
+type MobileMetric = BuildViewRow["mobileMetrics"][number];
+
+/** How many head-of-list columns a collapsed card shows. */
+const summaryMetricCount = 6;
+
+/**
+ * A case carries 39 columns; as tiles that is a card taller than the phone.
+ * Lead with whatever holds fitment evidence, then the head of the column list —
+ * the columns are declared in importance order, so its first entries are what a
+ * buyer compares. The remainder stays one tap away under "All N specs".
+ */
+function cardMetrics(row: BuildViewRow) {
+  const summary: MobileMetric[] = [];
+  const shown = new Set<MobileMetric>();
+  const add = (metric: MobileMetric) => {
+    if (shown.has(metric)) return;
+    shown.add(metric);
+    summary.push(metric);
+  };
+  for (const metric of row.mobileMetrics) if (metric.alert) add(metric);
+  for (const metric of row.mobileMetrics.slice(0, summaryMetricCount)) add(metric);
+  return { summary, rest: row.mobileMetrics.filter((metric) => !shown.has(metric)) };
+}
+
+function MetricTile(props: { metric: MobileMetric }) {
+  const metric = () => props.metric;
+  return <div
+    class="flex flex-col p-2.5 border rounded-btn bg-base-200 font-mono"
+    classList={{ "border-error/25 bg-error/[0.04]": metric().alert }}
+  >
+    <span class="text-[0.6rem] font-bold uppercase tracking-wider text-base-content/40" classList={{ "!text-error": metric().alert }}>{metric().label}</span>
+    <span
+      class="text-sm font-semibold"
+      classList={{ "text-error font-bold": metric().alert }}
+      style={isPsuBadge(metric().value) ? { "background-color": psuBadgeBackground(metric().value) } : undefined}
+    ><CatalogValue value={metric().value} /></span>
+  </div>;
+}
 
 function isPsuBadge(value: string): boolean {
   return value.includes("data-psu-tier-badge");
@@ -65,6 +104,21 @@ export default function BuildClient(props: { siteOrigin?: string }) {
     onCleanup(() => cancelAnimationFrame(frame));
   });
   const virtualRows = () => virtualizer.getVirtualItems();
+
+  /**
+   * Solid applies a dynamic `data-index` binding *after* the ref callback has
+   * run, and TanStack reads the index back out of that attribute to key its
+   * measurements. Reading it too early made every call bail out — the row was
+   * never handed to the ResizeObserver and kept `estimateSize` forever, so a
+   * 1470px card sat inside a 260px slot and the next card overlapped it.
+   * Claim the attribute here, then measure once Solid has inserted the node.
+   */
+  const measureRow = (element: HTMLElement, index: number) => {
+    element.dataset.index = String(index);
+    queueMicrotask(() => {
+      if (element.isConnected) virtualizer.measureElement(element);
+    });
+  };
   const paddingTop = () => virtualRows()[0]?.start ?? 0;
   const paddingBottom = () => {
     const items = virtualRows();
@@ -448,9 +502,9 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                         <div class="p-4" style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
                           <For each={virtualRows()}>{(item) => {
                             const row = () => rows()[item.index];
+                            const metrics = createMemo(() => cardMetrics(row()));
                             return <div
-                              data-index={item.index}
-                              ref={(el) => virtualizer.measureElement(el)}
+                              ref={(el) => measureRow(el, item.index)}
                               class="pb-3"
                               style={{ position: "absolute", top: "0", left: "0", width: "100%", transform: `translateY(${item.start}px)` }}
                             >
@@ -458,21 +512,33 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                                 class="card card-bordered bg-base-100"
                                 classList={{ "bg-success/[0.05] border-success/25": row().verdict === "pass", "bg-warning/[0.06] border-warning/30": row().verdict === "conditional", "bg-error/[0.06] border-error/30": row().verdict === "fail" }}
                               >
-                                <div class="flex items-center justify-end px-4 py-3 border-b border-base-300/70 bg-base-200/60">
-                                  <a class="btn btn-xs" classList={{ "btn-primary": row().selected, "btn-ghost": !row().selected }} href={row().actionUrl} onClick={(event) => follow(event, row().actionUrl)}>{row().actionLabel}</a>
+                                <div class="flex items-start justify-between gap-3 px-3 py-2.5 border-b border-base-300/70 bg-base-200/60">
+                                  <div class="flex min-w-0 flex-col items-start gap-1.5">
+                                    <h2 class="truncate text-sm font-semibold leading-tight" title={row().title}>{row().title}</h2>
+                                    <span
+                                      class="badge badge-xs font-mono font-bold uppercase tracking-[0.06em]"
+                                      classList={{ "badge-success": row().verdict === "pass", "badge-warning": row().verdict === "conditional", "badge-error": row().verdict === "fail", "badge-ghost": row().verdict === "unscored" }}
+                                      title={row().verdictTooltip}
+                                    >{row().verdictLabel}</span>
+                                  </div>
+                                  <a class="btn btn-xs shrink-0" classList={{ "btn-primary": row().selected, "btn-ghost": !row().selected }} href={row().actionUrl} onClick={(event) => follow(event, row().actionUrl)}>{row().actionLabel}</a>
                                 </div>
-                                <div class="flex flex-col gap-2 p-4">
-                                  <h2 class="truncate text-base font-semibold leading-tight" title={row().title}>{row().title}</h2>
-                                  <div class="grid grid-cols-2 gap-2 py-1">
-                                    <For each={row().mobileMetrics}>{(metric) =>
-                                      <div class="flex flex-col p-2.5 border rounded-btn bg-base-200 font-mono" classList={{ "border-error/25 bg-error/[0.04]": metric.alert }}>
-                                        <span class="text-[0.6rem] font-bold uppercase tracking-wider text-base-content/40" classList={{ "!text-error": metric.alert }}>{metric.label}</span>
-                                        <span class="text-sm font-semibold" classList={{ "text-error font-bold": metric.alert }} style={isPsuBadge(metric.value) ? { "background-color": psuBadgeBackground(metric.value) } : undefined}><CatalogValue value={metric.value} /></span>
-                                      </div>
-                                    }</For>
+                                <div class="flex flex-col gap-2 p-3">
+                                  <div class="grid grid-cols-2 gap-2">
+                                    <For each={metrics().summary}>{(metric) => <MetricTile metric={metric} />}</For>
                                   </div>
                                   <Show when={row().note}>
                                     <p class="px-3 py-2 text-sm text-base-content/70 bg-base-200 rounded-btn leading-relaxed"><CatalogValue value={row().note} /></p>
+                                  </Show>
+                                  <Show when={metrics().rest.length > 0}>
+                                    <details>
+                                      <summary class="cursor-pointer font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/50">
+                                        All {row().mobileMetrics.length} specs
+                                      </summary>
+                                      <div class="mt-2 grid grid-cols-2 gap-2">
+                                        <For each={metrics().rest}>{(metric) => <MetricTile metric={metric} />}</For>
+                                      </div>
+                                    </details>
                                   </Show>
                                 </div>
                               </div>
@@ -507,8 +573,7 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                             <For each={virtualRows()}>{(item) => {
                               const row = () => rows()[item.index];
                               return <tr
-                                data-index={item.index}
-                                ref={(el) => virtualizer.measureElement(el)}
+                                ref={(el) => measureRow(el, item.index)}
                                 class={`data-row data-row-${row().verdict}`}
                                 classList={{ "data-row-selected": row().selected }}
                               >
