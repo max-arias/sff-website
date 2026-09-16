@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import type { BuildView } from "../../lib/build-view";
+import type { BuildView, BuildViewNumericFilter } from "../../lib/build-view";
 import { BrowserCatalogClient, type BrowserCatalogStatus } from "./catalog-client";
 
 const sparseRowsTooltip = "Rows without fitment-relevant data are hidden by default. Turn this on to include them.";
@@ -92,7 +92,6 @@ export default function BuildClient() {
       setStatus(next.status);
       if (!searchDirty()) setSearchDraft(next.view.state.search);
       applyLoadedDrafts(next.view);
-      setOpenFilter(undefined);
     } catch (caught) {
       if (latestHref !== resolved) return;
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -136,6 +135,19 @@ export default function BuildClient() {
       filterTimers.delete(name);
       updateQuery(name, value || undefined);
     }, 400));
+  };
+
+  /**
+   * Numeric inputs render from the draft so typing is not clobbered by the
+   * round-trip, and apply through the debounce so a filter lands once the user
+   * pauses instead of on blur.
+   */
+  const draftValue = (filter: BuildViewNumericFilter) =>
+    numericDrafts()[filter.name] ?? String(filter.value);
+
+  const commitDraft = (name: string, value: string) => {
+    setNumericDrafts((drafts) => ({ ...drafts, [name]: value }));
+    commitFilter(name, value);
   };
 
   onMount(() => {
@@ -271,6 +283,7 @@ export default function BuildClient() {
                             <button
                               type="button"
                               class="filter-chip"
+                              data-filter-chip
                               classList={{ "filter-chip-active": group.activeCount > 0 }}
                               aria-expanded={openFilter() === id}
                               aria-controls={id}
@@ -280,7 +293,7 @@ export default function BuildClient() {
                               <span class="filter-chip-value">{group.summary}</span>
                             </button>
                             <Show when={openFilter() === id}>
-                              <div id={id} class="filter-popover filter-popover-open">
+                              <div id={id} class="filter-popover filter-popover-open" data-filter-popover>
                                 <div class="filter-popover-header">{group.label}</div>
                                 <div class="filter-popover-body">
                                   <Show when={group.options.length > 0}>
@@ -292,7 +305,10 @@ export default function BuildClient() {
                                             href={option.href}
                                             class="btn btn-xs font-mono inline-flex items-center gap-1"
                                             classList={{ "btn-primary": option.active, "btn-outline": !option.active }}
-                                            onClick={(event) => follow(event, option.href)}
+                                            onClick={(event) => {
+                                              setOpenFilter(undefined);
+                                              follow(event, option.href);
+                                            }}
                                           >
                                             <span>{option.label}</span>
                                             <Show when={option.tooltip}>
@@ -312,9 +328,9 @@ export default function BuildClient() {
                                         min="0"
                                         max={filter.max}
                                         step={filter.step}
-                                        value={filter.value}
+                                        value={draftValue(filter)}
                                         aria-label={`${filter.label} slider`}
-                                        onChange={(event) => updateQuery(filter.name, event.currentTarget.value)}
+                                        onInput={(event) => commitDraft(filter.name, event.currentTarget.value)}
                                       />
                                       <div class="flex items-center gap-1">
                                         <input
@@ -322,11 +338,11 @@ export default function BuildClient() {
                                           min="0"
                                           max={filter.max}
                                           step={filter.step}
-                                          value={filter.active || filter.derived ? filter.value : ""}
+                                          value={numericDrafts()[filter.name] ?? (filter.active || filter.derived ? String(filter.value) : "")}
                                           placeholder={`${filter.max}`}
                                           class="input input-bordered input-xs w-20 text-right font-mono text-xs"
                                           aria-label={filter.label}
-                                          onChange={(event) => updateQuery(filter.name, event.currentTarget.value || undefined)}
+                                          onInput={(event) => commitDraft(filter.name, event.currentTarget.value)}
                                         />
                                         <span class="font-mono text-[0.7rem] text-base-content/40">{filter.unit}</span>
                                       </div>
