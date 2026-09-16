@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { normalizeSearchText } from "../lib/search-normalization";
 import type { CasePart, GenericPart, GpuPart, PartKind } from "../types";
 import { decodeCatalogRow } from "./d1-decoders";
-import { buildCatalogSearchStatement } from "./catalog-search-query";
+import { buildCatalogSearchStatement } from "../lib/catalog-search-query";
 
 interface D1Result<T> {
   results?: T[];

@@ -1,4 +1,3 @@
-import type { APIContext } from "astro";
 import {
   buildSearchParams,
   buildUrl,
@@ -12,7 +11,7 @@ import {
   type PsuFormFactorFilter,
   type PsuTierFilter,
   type SelectableKind,
-} from "../lib/build-state";
+} from "./build-state";
 import type { CasePart, FitVerdict, GenericPart, GpuPart } from "../types";
 import type { CatalogStore } from "./catalog-store";
 import {
@@ -34,7 +33,7 @@ import {
   psuTierRank,
   specValue,
   yesNoValue,
-} from "../lib/generic-part";
+} from "./generic-part";
 
 type PartRecord = GenericPart | CasePart | GpuPart;
 type DisplayVerdict = FitVerdict | "unscored";
@@ -154,11 +153,6 @@ export interface BuildView {
   tableHeaders: BuildViewTableHeader[];
   rows: BuildViewRow[];
   totalRows: number;
-  displayStart: number;
-  displayEnd: number;
-  pageCount: number;
-  previousUrl: string;
-  nextUrl: string;
   psuTierSourceUrl: string;
   activeFilterChips: Array<{
     label: string;
@@ -1711,8 +1705,6 @@ function metricColumnsFor(kind: SelectableKind): MetricColumnDef[] {
 
 // ---------------------------------------------------------------------------
 
-const pageSize = 25;
-const psuPageSize = 500;
 
 const CASE_VOLUME_TIERS: Array<{ value: CaseVolumeTier; label: string }> = [
   { value: "sub-10l", label: "<10L" },
@@ -1735,7 +1727,7 @@ const CASE_INTENT_OPTIONS: Array<{ value: CaseIntent; label: string; tooltip: st
   },
 ];
 
-import { FILTER_GROUPS } from "../lib/build-filter-params";
+import { FILTER_GROUPS } from "./build-filter-params";
 
 const psuTierSourceUrl =
   "https://docs.google.com/spreadsheets/d/1akCHL7Vhzk_EhrpIGkz8zTEvYfLDcaSpZRB6Xt6JWkc/edit";
@@ -1791,22 +1783,11 @@ const PSU_FILTER_GROUP_ORDER = [
   "Physical",
 ];
 
-/**
- * Create a D1-backed CatalogStore. Defined as a separate function so
- * the top-level module does not eagerly import the D1 adapter (which
- * depends on cloudflare:workers).
- */
-async function defaultStore(context: APIContext): Promise<CatalogStore> {
-  const { D1CatalogStore } = await import("./d1-catalog-store");
-  return new D1CatalogStore(context);
-}
-
 export async function getBuildView(
-  context: APIContext,
   url: URL,
-  store?: CatalogStore,
+  store: CatalogStore,
 ): Promise<BuildView> {
-  const storeInstance = store ?? (await defaultStore(context));
+  const storeInstance = store;
   const state = parseBuildQuery(url);
   const selectedIds = state.selectedIds;
   const parts = await storeInstance.loadParts();
@@ -1884,25 +1865,10 @@ export async function getBuildView(
   const viewNumericFilters = numericFilters(state, numericFilterSource);
   const totalRows = candidates.length;
   const builtRows = candidates.map((part) => buildRow(ctx, part));
-  const sortedRows =
+  const rows =
     state.search.trim() && state.sort === "release-year"
       ? builtRows
       : builtRows.sort((a, b) => rowSort(a, b, state));
-  const rows = sortedRows.slice(
-    (state.page - 1) * activePageSize(state.kind),
-    state.page * activePageSize(state.kind),
-  );
-  const pageCount = Math.max(
-    1,
-    Math.ceil(totalRows / activePageSize(state.kind)),
-  );
-  const displayStart = totalRows
-    ? (state.page - 1) * activePageSize(state.kind) + 1
-    : 0;
-  const displayEnd = Math.min(
-    state.page * activePageSize(state.kind),
-    totalRows,
-  );
   const slots = slotOrder.map((slot) => buildSlot(ctx, slot.kind));
   const selectedFitments = slotOrder
     .map(({ kind }) => {
@@ -1932,7 +1898,7 @@ export async function getBuildView(
     constraintMeters: constraintMeters(ctx),
     kindTabs: tabOrder.map((kind) => ({
       kind,
-      href: buildUrl(state, { kind, resetPage: true }),
+      href: buildUrl(state, { kind }),
       active: kind === state.kind,
     })),
     searchAction: "/build",
@@ -1947,16 +1913,10 @@ export async function getBuildView(
       psuFormFactor: null,
       psuFeatures: [],
       gpuBrand: null,
-      resetPage: true,
     }),
     tableHeaders: tableHeaders(state),
     rows,
     totalRows,
-    displayStart,
-    displayEnd,
-    pageCount,
-    previousUrl: buildUrl(state, { page: Math.max(1, state.page - 1) }),
-    nextUrl: buildUrl(state, { page: Math.min(pageCount, state.page + 1) }),
     psuTierSourceUrl,
     activeFilterChips: buildFilterChips(state),
     tableNotice: buildTableNotice(ctx, state),
@@ -2128,10 +2088,6 @@ async function searchTypedCandidates<T extends CasePart | GpuPart>(
     .filter((part): part is T => Boolean(part));
 }
 
-function activePageSize(kind: SelectableKind) {
-  return kind === "psu" ? psuPageSize : pageSize;
-}
-
 function partByKind<K extends PartRecord["kind"]>(
   index: Map<string, PartRecord>,
   id: string | undefined,
@@ -2192,8 +2148,8 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
     verdictCopy: verdictCopy(verdict),
     verdictTooltip: verdictTooltip(verdict),
     specs: slotSpecs(ctx, kind, part),
-    clearUrl: buildUrl(ctx.state, { clearSlot: kind, resetPage: true }),
-    browseUrl: buildUrl(ctx.state, { kind, resetPage: true }),
+    clearUrl: buildUrl(ctx.state, { clearSlot: kind }),
+    browseUrl: buildUrl(ctx.state, { kind }),
   };
 }
 
@@ -2257,11 +2213,10 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     actionLabel: selected ? "Remove" : hasSelection ? "Swap" : "Add",
     actionTone: selected ? "remove" : hasSelection ? "swap" : "add",
     actionUrl: selected
-      ? buildUrl(ctx.state, { clearSlot: kind, resetPage: true })
+      ? buildUrl(ctx.state, { clearSlot: kind })
       : buildUrl(ctx.state, {
           kind: nextTabKind(ctx.state.kind),
           selectedIds: { [kind]: part.id },
-          resetPage: true,
         }),
     releaseYear: partReleaseYear(part),
     availabilityRank: part.availabilityStatus === "unavailable" ? 1 : 0,
@@ -2421,13 +2376,11 @@ function buildIssues(
 /**
  * Hidden inputs for the search form, derived from the canonical
  * buildSearchParams helper (same params that buildUrl emits).
- * Excludes "search" (comes from the visible input) and "page"
- * (submitting search resets to page 1).
+ * Excludes "search", which comes from the visible input.
  */
 function searchHiddenInputs(state: BuildQueryState) {
   const params = buildSearchParams(state);
   params.delete("search");
-  params.delete("page");
   const inputs: Array<{ name: string; value: string }> = [];
   params.forEach((value, name) => inputs.push({ name, value }));
   return inputs;
@@ -2555,7 +2508,6 @@ function filterOptionsForGroup(
       label: brand,
       href: buildUrl(state, {
         gpuBrand: state.gpuBrand === brand ? null : brand,
-        resetPage: true,
       }),
       active: state.gpuBrand?.toLocaleLowerCase() === brand.toLocaleLowerCase(),
     }));
@@ -2566,7 +2518,6 @@ function filterOptionsForGroup(
     label: tier.label,
     href: buildUrl(state, {
       caseVolumeTier: state.caseVolumeTier === tier.value ? null : tier.value,
-      resetPage: true,
     }),
     active: state.caseVolumeTier === tier.value,
   }));
@@ -2575,7 +2526,6 @@ function filterOptionsForGroup(
       label: intent.label,
       href: buildUrl(state, {
         caseIntent: state.caseIntent === intent.value ? null : intent.value,
-        resetPage: true,
       }),
       active: state.caseIntent === intent.value,
       tooltip: intent.tooltip,
@@ -2593,7 +2543,6 @@ function psuFilterOptionsForGroup(
       label: option.label,
       href: buildUrl(state, {
         psuTier: state.psuTier === option.value ? null : option.value,
-        resetPage: true,
       }),
       active: state.psuTier === option.value,
     }));
@@ -2603,7 +2552,6 @@ function psuFilterOptionsForGroup(
       label: option.label,
       href: buildUrl(state, {
         psuFormFactor: state.psuFormFactor === option.value ? null : option.value,
-        resetPage: true,
       }),
       active: state.psuFormFactor === option.value,
     }));
@@ -2617,7 +2565,6 @@ function psuFilterOptionsForGroup(
           psuFeatures: active
             ? state.psuFeatures.filter((feature) => feature !== option.value)
             : [...state.psuFeatures, option.value],
-          resetPage: true,
         }),
         active,
         tooltip: option.tooltip,
@@ -2643,7 +2590,7 @@ function tableHeaders(state: BuildQueryState): BuildViewTableHeader[] {
       label,
       sortable,
       sortUrl: sortable
-        ? buildUrl(state, { sort: key, dir: nextDir, resetPage: true })
+        ? buildUrl(state, { sort: key, dir: nextDir })
         : "",
       sortDir: state.sort === key ? state.dir : null,
     };
@@ -2783,7 +2730,7 @@ function buildFilterChips(
   if (state.search.trim()) {
     chips.push({
       label: `"${state.search.trim()}"`,
-      href: buildUrl(state, { search: "", resetPage: true }),
+      href: buildUrl(state, { search: "" }),
       tone: "active",
     });
   }
@@ -2794,16 +2741,7 @@ function buildFilterChips(
       href: buildUrl(state, {
         sort: "release-year",
         dir: "desc",
-        resetPage: true,
       }),
-      tone: "active",
-    });
-  }
-
-  if (state.page > 1) {
-    chips.push({
-      label: `Page ${state.page}`,
-      href: buildUrl(state, { page: 1 }),
       tone: "active",
     });
   }
@@ -2811,7 +2749,7 @@ function buildFilterChips(
   if (state.showSparseRows) {
     chips.push({
       label: "Showing sparse rows",
-      href: buildUrl(state, { showSparseRows: false, resetPage: true }),
+      href: buildUrl(state, { showSparseRows: false }),
       tone: "active",
     });
   }
@@ -2822,7 +2760,7 @@ function buildFilterChips(
     );
     chips.push({
       label: `Volume: ${tier?.label ?? state.caseVolumeTier}`,
-      href: buildUrl(state, { caseVolumeTier: null, resetPage: true }),
+      href: buildUrl(state, { caseVolumeTier: null }),
       tone: "active",
     });
   }
@@ -2833,7 +2771,7 @@ function buildFilterChips(
     );
     chips.push({
       label: intent?.label ?? state.caseIntent,
-      href: buildUrl(state, { caseIntent: null, resetPage: true }),
+      href: buildUrl(state, { caseIntent: null }),
       tone: "active",
     });
   }
@@ -2841,7 +2779,7 @@ function buildFilterChips(
   if (state.kind === "gpu" && state.gpuBrand) {
     chips.push({
       label: `Brand: ${state.gpuBrand}`,
-      href: buildUrl(state, { gpuBrand: null, resetPage: true }),
+      href: buildUrl(state, { gpuBrand: null }),
       tone: "active",
     });
   }
@@ -2850,7 +2788,7 @@ function buildFilterChips(
     const option = PSU_TIER_FILTERS.find((candidate) => candidate.value === state.psuTier);
     chips.push({
       label: option?.label ?? state.psuTier,
-      href: buildUrl(state, { psuTier: null, resetPage: true }),
+      href: buildUrl(state, { psuTier: null }),
       tone: "active",
     });
   }
@@ -2861,7 +2799,7 @@ function buildFilterChips(
     );
     chips.push({
       label: `Form: ${option?.label ?? state.psuFormFactor}`,
-      href: buildUrl(state, { psuFormFactor: null, resetPage: true }),
+      href: buildUrl(state, { psuFormFactor: null }),
       tone: "active",
     });
   }
@@ -2873,7 +2811,6 @@ function buildFilterChips(
         label: option?.label ?? feature,
         href: buildUrl(state, {
           psuFeatures: state.psuFeatures.filter((candidate) => candidate !== feature),
-          resetPage: true,
         }),
         tone: "active",
       });
@@ -2894,7 +2831,7 @@ function buildFilterChips(
     }
     chips.push({
       label: `Max ${def.label.toLowerCase()}: ${value}${unit}`,
-      href: buildUrl(state, { numericFilters: remaining, resetPage: true }),
+      href: buildUrl(state, { numericFilters: remaining }),
       tone: "active",
     });
   }

@@ -24,7 +24,6 @@ function emptyState(): BuildQueryState {
     selectedIds: {},
     kind: "case",
     search: "",
-    page: 1,
     sort: "release-year",
     dir: "desc", // parseBuildQuery defaults to desc for release-year
     showSparseRows: false,
@@ -86,7 +85,6 @@ test("buildSearchParams and buildUrl produce same params", () => {
     sort: "name",
     dir: "asc",
     showSparseRows: true,
-    page: 3,
   };
   const params = buildSearchParams(state);
   const url = buildUrl(state);
@@ -102,7 +100,6 @@ test("buildSearchParams → parseBuildQuery round-trips", () => {
     kind: "case",
     selectedIds: { case: "c1", gpu: "g2", "cpu-cooler": "cc3" },
     search: "noctua",
-    page: 2,
     sort: "name",
     dir: "desc",
     showSparseRows: true,
@@ -120,7 +117,6 @@ test("buildSearchParams → parseBuildQuery round-trips", () => {
 
   assert.equal(reparsed.kind, state.kind);
   assert.equal(reparsed.search, state.search);
-  assert.equal(reparsed.page, state.page);
   assert.equal(reparsed.sort, state.sort);
   assert.equal(reparsed.dir, state.dir);
   assert.equal(reparsed.showSparseRows, state.showSparseRows);
@@ -243,18 +239,6 @@ test("numeric filters preserve recognized params that are not UI grouped", () =>
 // Page param
 // ---------------------------------------------------------------------------
 
-test("buildSearchParams omits page=1", () => {
-  const state = { ...emptyState(), page: 1 };
-  const params = buildSearchParams(state);
-  assert.equal(params.get("page"), null);
-});
-
-test("buildSearchParams includes page > 1", () => {
-  const state = { ...emptyState(), page: 5 };
-  const params = buildSearchParams(state);
-  assert.equal(params.get("page"), "5");
-});
-
 // ---------------------------------------------------------------------------
 // Sparse rows
 // ---------------------------------------------------------------------------
@@ -325,17 +309,16 @@ test("buildSearchParams includes search when non-empty", () => {
 
 test("buildSearchParams clears kind-scoped search when switching tabs", () => {
   const state = { ...emptyState(), kind: "case" as const, search: "thor" };
-  const params = buildSearchParams(state, { kind: "gpu", resetPage: true });
+  const params = buildSearchParams(state, { kind: "gpu" });
 
   assert.equal(params.get("kind"), "gpu");
   assert.equal(params.get("search"), null);
 });
 
 test("GPU brand is replayable and is cleaned up outside the GPU table", () => {
-  const state = { ...emptyState(), kind: "gpu" as const, gpuBrand: "PNY", page: 4 };
-  const params = buildSearchParams(state, { resetPage: true });
+  const state = { ...emptyState(), kind: "gpu" as const, gpuBrand: "PNY" };
+  const params = buildSearchParams(state);
   assert.equal(params.get("gpu-brand"), "PNY");
-  assert.equal(params.get("page"), null);
 
   const reparsed = parseBuildQuery(new URL(`/build?${params}`, "http://localhost"));
   assert.equal(reparsed.gpuBrand, "PNY");

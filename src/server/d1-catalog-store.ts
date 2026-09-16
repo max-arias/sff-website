@@ -1,5 +1,5 @@
 import type { CasePart, GenericPart, GpuPart } from "../types";
-import type { CatalogSearchSuggestion, CatalogStore } from "./catalog-store";
+import type { CatalogSearchSuggestion, CatalogStore } from "../lib/catalog-store";
 import {
   findCaseAndGpu,
   loadCatalogKind,

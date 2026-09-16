@@ -40,6 +40,17 @@ wrangler d1 migrations apply sff-builder --local
 tsx scripts/seed-d1.ts --database sff-builder --local
 ```
 
+Local D1 is only the *source* for the catalog. To serve `/build` locally you
+also need the browser artifact on disk, which the normal build produces:
+
+```powershell
+npm run build   # builds public/catalog/ from local D1, then astro build
+npm run cf:dev  # serve the Worker locally
+```
+
+If local D1 was never seeded, `npm run build` prints a notice and builds the
+artifact from remote D1 instead.
+
 ## Production Data And Deploy
 
 ```powershell
@@ -49,12 +60,19 @@ npm run cf:deploy:prod
 This runs:
 
 ```txt
-npm run intake
+npm run intake                 # fetch + normalize the SFF Master List
+npm run intake:sql             # regenerate .data/intake-seed.sql
 wrangler d1 migrations apply sff-builder --remote
 tsx scripts/seed-d1.ts --database sff-builder --remote
-npm run cf:build
+npm run catalog:browser:prod   # build the browser catalog artifact from remote D1
+npm run build:astro            # astro build (artifact already on disk)
 wrangler deploy --config dist/server/wrangler.json
 ```
+
+The catalog artifact step is required: `/build` reads the catalog from
+`public/catalog/catalog.sqlite3.gz` in the browser, not from D1. It must be
+built from **remote** D1 during deploy, after seeding, so the artifact matches
+the deployed data.
 
 ## Preview Data And Deploy
 
@@ -118,6 +136,23 @@ npm run cf:deploy:preview
 ```
 
 The Cloudflare build/deploy environment needs enough permission to deploy Workers and mutate D1 databases. The deploy commands run D1 migrations and seed data before deploying the Worker.
+
+### Do not use `npm run build` as the CI build command
+
+`npm run build` also builds the browser catalog artifact, and a CI checkout has
+no local D1 database. It now falls back to reading remote D1 when local D1 has
+no catalog rows, so it will not hard-fail, but the artifact is produced more
+cheaply and more correctly by the deploy command, which builds it from remote
+D1 *after* seeding. Keep the build command cheap (`npm run typecheck`) and let
+`cf:deploy:prod` / `cf:deploy:preview` own the artifact.
+
+The artifact build prints which source it used, e.g.:
+
+```txt
+Built /catalog/catalog.sqlite3.gz from remote D1: 8488 records, ...
+```
+
+Check that line whenever a deploy produces an unexpected catalog.
 
 Suggested branch behavior:
 

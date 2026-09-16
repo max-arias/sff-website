@@ -236,13 +236,9 @@ _Avoid_: Hidden verdict mode, filtered-away fitment state
 The rule that `search` is a text filter applied within the current `Table Kind Filter`, while `kind` remains the controlling type filter.
 _Avoid_: Auto-jumping kind, search-overrides-kind behavior
 
-**Replayable Pagination**:
-The rule that table pagination state is included in URL state so shared links reopen the same filtered slice of results.
-_Avoid_: Forced page reset, non-shareable table position
-
-**Page Reset Rule**:
-The rule that result-shaping changes such as kind, search, selected parts, or filters reset pagination to page 1.
-_Avoid_: Empty preserved page, stale page index
+**Full Result Set**:
+The table renders the entire filtered result set in one virtualized list; there is no pagination and no `page` URL parameter. Only rows near the viewport exist in the DOM, so a shared link always shows every matching row from the top.
+_Avoid_: Paginated slices, page-index URL state, "load more" stepping
 
 **Kind Filter Cleanup**:
 The rule that when the table `kind` changes, kind-specific filters that no longer apply are removed from URL state while shared filters and selected parts remain.
@@ -302,8 +298,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - **Sparse Row Visibility** defaults to hidden and is replayed with the `show-sparse=1` URL parameter when enabled
 - Table verdict states follow **Always-Visible Verdicts**
 - `search` follows **Kind-Scoped Search** inside the active table kind
-- Table paging follows **Replayable Pagination**
-- Result-shaping changes follow the **Page Reset Rule**
+- Table paging follows the **Full Result Set**
 - Kind changes follow **Kind Filter Cleanup**
 - V1 build selection follows **Catalog-Only Selection**
 - Selected slots should store a **Catalog Record ID**
@@ -470,11 +465,8 @@ _Avoid_: Dead filter params, misleading stale URL state
 > **Dev:** "If the URL says `kind=gpu`, can search silently switch the table to cases?"
 > **Domain expert:** "No. Use **Kind-Scoped Search**. `kind` is the type filter, and `search` narrows rows within that kind."
 
-> **Dev:** "If the table is on page 3, should a shared URL reopen that same page?"
-> **Domain expert:** "Yes. Use **Replayable Pagination** so the shared link restores the same filtered slice of the table."
-
-> **Dev:** "What happens to pagination when kind, search, filters, or selected parts change the result set?"
-> **Domain expert:** "Use the **Page Reset Rule**. Result-shaping changes reset the table to page 1."
+> **Dev:** "Should a shared URL reopen the table at a particular page?"
+> **Domain expert:** "No. Use the **Full Result Set**: the URL carries the filters, and the table always shows every matching row from the top of one virtualized list."
 
 > **Dev:** "If the user switches the table from GPUs to cases, do old GPU-only filters stay in the URL?"
 > **Domain expert:** "No. Use **Kind Filter Cleanup** so irrelevant kind-specific filters are removed while shared filters and selected parts stay intact."
@@ -528,8 +520,7 @@ _Avoid_: Dead filter params, misleading stale URL state
 - "shared filters" could have stayed vague; resolved: v1 shares `search` and `sort` across kinds.
 - "verdict visibility" could have added an unnecessary mode; resolved: use **Always-Visible Verdicts** with fitment-first sorting.
 - "search" could have overridden the current table kind; resolved: use **Kind-Scoped Search** where `kind` remains authoritative.
-- "pagination" could have been treated as disposable UI state; resolved: use **Replayable Pagination** in the URL contract.
-- "page state" could have survived incompatible result changes; resolved: result-shaping changes follow the **Page Reset Rule**.
+- "pagination" could have been kept as page-index URL state; resolved: use the **Full Result Set**, since a virtualized list makes page slicing unnecessary.
 - "kind switches" could have left dead filter params behind; resolved: use **Kind Filter Cleanup** for kind-specific URL filters.
 - "custom parts" could have introduced a second selection model in v1; resolved: use **Catalog-Only Selection**.
 - "part identity" could have drifted toward abstract family IDs; resolved: selected slots store the concrete **Catalog Record ID**.

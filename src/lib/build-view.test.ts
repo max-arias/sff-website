@@ -1,7 +1,7 @@
 /**
  * Tests for build-view with an in-memory CatalogStore.
  *
- * Run with:  npx tsx src/server/build-view.test.ts
+ * Run with:  npx tsx src/lib/build-view.test.ts
  *
  * Verifies that getBuildView can be invoked without D1/Cloudflare
  * infrastructure, using InMemoryCatalogStore fixture data.
@@ -9,14 +9,8 @@
 
 import assert from "node:assert/strict";
 import { getBuildView } from "./build-view";
-import { InMemoryCatalogStore } from "./in-memory-catalog-store";
+import { InMemoryCatalogStore } from "../server/in-memory-catalog-store";
 import type { CasePart, GpuPart } from "../types";
-
-// ---------------------------------------------------------------------------
-// Minimal APIContext stub
-// ---------------------------------------------------------------------------
-
-const emptyContext = {} as any;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -152,7 +146,7 @@ function test(name: string, fn: () => void | Promise<void>) {
 test("getBuildView returns view with empty store", async () => {
   const store = new InMemoryCatalogStore({ cases: [], gpus: [], parts: [] });
   const url = new URL("http://localhost/build?kind=case");
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   assert.equal(view.state.kind, "case");
   assert.equal(view.rows.length, 0);
@@ -172,7 +166,7 @@ test("getBuildView with case fixtures produces rows", async () => {
     parts: [],
   });
   const url = new URL("http://localhost/build?kind=case");
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   assert.equal(view.rows.length, 2);
   assert.equal(view.totalRows, 2);
@@ -190,7 +184,7 @@ test("getBuildView with GPU kind", async () => {
     parts: [],
   });
   const url = new URL("http://localhost/build?kind=gpu");
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   assert.equal(view.rows.length, 1);
   assert.equal(view.totalRows, 1);
@@ -207,11 +201,7 @@ test("GPU brand filter exposes catalog brands and narrows rows", async () => {
     ],
     parts: [],
   });
-  const view = await getBuildView(
-    emptyContext,
-    new URL("http://localhost/build?kind=gpu&gpu-brand=PNY&page=1"),
-    store,
-  );
+  const view = await getBuildView(new URL("http://localhost/build?kind=gpu&gpu-brand=PNY"), store);
 
   assert.deepEqual(view.rows.map((row) => row.id), ["pny"]);
   const brandGroup = view.numericFilterGroups.find((group) => group.label === "Brand");
@@ -220,7 +210,6 @@ test("GPU brand filter exposes catalog brands and narrows rows", async () => {
   assert.equal(brandGroup!.options.find((option) => option.label === "PNY")!.active, true);
   assert.doesNotMatch(brandGroup!.options.find((option) => option.label === "PNY")!.href, /gpu-brand/);
   assert.match(brandGroup!.options.find((option) => option.label === "ASUS")!.href, /gpu-brand=ASUS/);
-  assert.equal(view.state.page, 1, "page one is the reset target for a filter link");
 });
 
 test("adding or swapping a table row advances to the next tab, but removing does not", async () => {
@@ -229,15 +218,11 @@ test("adding or swapping a table row advances to the next tab, but removing does
     gpus: [fakeGpu({ id: "gpu-a" })],
     parts: [],
   });
-  const addView = await getBuildView(emptyContext, new URL("http://localhost/build?kind=case"), store);
+  const addView = await getBuildView(new URL("http://localhost/build?kind=case"), store);
   assert.match(addView.rows[0].actionUrl, /kind=gpu/);
   assert.match(addView.rows[0].actionUrl, /case=case-a/);
 
-  const removeView = await getBuildView(
-    emptyContext,
-    new URL("http://localhost/build?kind=case&case=case-a"),
-    store,
-  );
+  const removeView = await getBuildView(new URL("http://localhost/build?kind=case&case=case-a"), store);
   assert.match(removeView.rows[0].actionUrl, /kind=case/);
   assert.doesNotMatch(removeView.rows[0].actionUrl, /kind=gpu/);
 });
@@ -253,7 +238,7 @@ test("getBuildView with selected parts produces slots with verdicts", async () =
   const url = new URL(
     "http://localhost/build?kind=case&case=selected-case&gpu=selected-gpu",
   );
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   // Slots should include the selected case and GPU
   const caseSlot = view.slots.find((s) => s.kind === "case");
@@ -273,7 +258,7 @@ test("getBuildView with case+GPU selection shows build status", async () => {
     parts: [],
   });
   const url = new URL("http://localhost/build?kind=case&case=c&gpu=g");
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   // With a compatible case and GPU, status should be pass or conditional
   assert.ok(
@@ -292,11 +277,7 @@ test("riser advisory is omitted from GPU candidates until a GPU is selected", as
     gpus: [fakeGpu({ id: "g" }), fakeGpu({ id: "g2", name: "Second GPU" })],
     parts: [],
   });
-  const view = await getBuildView(
-    emptyContext,
-    new URL("http://localhost/build?kind=gpu&case=c"),
-    store,
-  );
+  const view = await getBuildView(new URL("http://localhost/build?kind=gpu&case=c"), store);
 
   assert.ok(view.rows.length > 0);
   assert.ok(view.rows.every((row) => !row.note.includes("requires a GPU riser")));
@@ -318,11 +299,7 @@ test("selected case and GPU retain the riser advisory in Build Issues", async ()
     gpus: [fakeGpu({ id: "g" })],
     parts: [],
   });
-  const view = await getBuildView(
-    emptyContext,
-    new URL("http://localhost/build?kind=gpu&case=c&gpu=g"),
-    store,
-  );
+  const view = await getBuildView(new URL("http://localhost/build?kind=gpu&case=c&gpu=g"), store);
 
   assert.ok(
     view.buildIssues.some((section) =>
@@ -361,7 +338,7 @@ test("cell-level evidence — GPU length conditional highlights length cell", as
     parts: [],
   });
   const url = new URL("http://localhost/build?kind=gpu&case=c&gpu=g");
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   // Find the selected GPU row
   const gpuRow = view.rows.find((r) => r.id === "g");
@@ -388,7 +365,7 @@ test("cell-level evidence — PSU form factor mismatch highlights form-factor ce
     ],
   });
   const url = new URL("http://localhost/build?kind=psu&case=c&psu=psu-1");
-  const view = await getBuildView(emptyContext, url, store);
+  const view = await getBuildView(url, store);
 
   const psuRow = view.rows.find((r) => r.id === "psu-1");
   assert.ok(psuRow, "psu row should exist");

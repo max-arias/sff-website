@@ -1,8 +1,14 @@
 import type { CasePart, GenericPart, GpuPart } from "../types";
-import type { CatalogSearchSuggestion as _CatalogSearchSuggestion } from "./d1";
 
-/** Re-exported for consumers of CatalogStore. */
-export type CatalogSearchSuggestion = _CatalogSearchSuggestion;
+export interface CatalogSearchSuggestion {
+  id: string;
+  kind: string;
+  displayName: string;
+  sourceSheet: string;
+  rowNumber: number;
+  score: number;
+  match: string;
+}
 
 /**
  * CatalogStore is the data-access seam for the build view and API routes.

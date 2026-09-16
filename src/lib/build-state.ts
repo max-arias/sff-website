@@ -13,7 +13,6 @@ export interface BuildQueryState {
   selectedIds: SelectedIds;
   kind: SelectableKind;
   search: string;
-  page: number;
   sort: string;
   dir: "asc" | "desc";
   showSparseRows: boolean;
@@ -52,7 +51,6 @@ export type BuildQueryPatch = Partial<{
   clearSlot: SelectableKind;
   kind: SelectableKind;
   search: string;
-  page: number;
   sort: string;
   dir: "asc" | "desc";
   showSparseRows: boolean;
@@ -63,7 +61,6 @@ export type BuildQueryPatch = Partial<{
   psuTier: PsuTierFilter | null;
   psuFormFactor: PsuFormFactorFilter | null;
   psuFeatures: PsuFeatureFilter[];
-  resetPage: boolean;
 }>;
 
 export const slotOrder: SlotDescriptor[] = [
@@ -129,7 +126,6 @@ export function parseBuildQuery(url: URL): BuildQueryState {
     selectedIds,
     kind: sanitizeKind(url.searchParams.get("kind")) ?? inferKind(selectedIds),
     search: url.searchParams.get("search") ?? "",
-    page: Math.max(1, Number(url.searchParams.get("page") ?? 1) || 1),
     sort,
     dir:
       dirParam === "desc"
@@ -168,7 +164,6 @@ export function buildSearchParams(
   const search = patch.kind !== undefined && patch.kind !== state.kind
     ? ""
     : (patch.search ?? state.search);
-  const page = patch.resetPage ? 1 : (patch.page ?? state.page);
   const sort = patch.sort ?? state.sort;
   const dir = patch.dir ?? state.dir;
   const showSparseRows = patch.showSparseRows ?? state.showSparseRows;
@@ -224,7 +219,6 @@ export function buildSearchParams(
       params.set(paramName, formatQueryNumber(value));
     }
   }
-  if (page > 1) params.set("page", String(page));
 
   return params;
 }

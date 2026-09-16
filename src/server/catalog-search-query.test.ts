@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import {
   buildCatalogSearchStatement,
   CATALOG_SEARCH_READ_BUDGET,
-} from "./catalog-search-query";
+} from "../lib/catalog-search-query";
 
 const execFileAsync = promisify(execFile);
 

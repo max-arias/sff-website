@@ -19,26 +19,34 @@ SolidJS + TanStack Table; this note selects the database layer.
 
 ## Decision
 
-**@sqlite.org/sqlite-wasm, `opfs-sahpool` VFS, in one dedicated Web Worker.**
+**@sqlite.org/sqlite-wasm, deserialized into an in-memory database in one
+dedicated Web Worker. The compressed artifact is cached in the Cache API.**
 
-Key technical points, all verified against primary docs:
+Revised 2026-09-16: the original decision below used the `opfs-sahpool` VFS.
+That was replaced after reproducing a hard multi-tab failure — a SAH pool
+permits only one open access handle per directory, so the second tab to load
+`/build` failed with `NoModificationAllowedError` on `createSyncAccessHandle`,
+and its recovery path (`removeVfs`) failed too, leaving that tab on the error
+state. The Cache API has no such exclusivity, so every tab loads independently.
 
-- Use `OpfsSAHPoolDb`, not the plain `opfs` VFS. Sahpool (SQLite 3.43+) needs
-  **no COOP/COEP headers**, works on Chrome 102+/Firefox 111+/Safari 15.2+,
-  and is the fastest OPFS backend. (The COOP/COEP warning in the npm README
-  applies only to the plain `opfs` VFS.)
-- Sahpool is **single-connection**: one Web Worker owns the database. Multi-tab
-  coexistence via Web Locks leader election (the non-leader tabs wait or open
-  read-only); acceptable for a build tool.
+Key technical points, all verified against primary docs or the shipped build:
+
+- Storage is the **Cache API**, keyed by catalog version. It is shared safely
+  by concurrent tabs and persists across reloads; a reload re-reads the ~1.5 MB
+  artifact locally and makes no artifact network request.
+- The worker deserializes the artifact with `sqlite3_deserialize` into an
+  in-memory database (`:memory:`, `pragma query_only = on`). No COOP/COEP
+  headers are needed, because no OPFS VFS is involved.
+- The database is ~21 MB expanded per tab. That is the accepted cost of
+  dropping the single-writer VFS; the data is read-only and never written.
 - FTS5 ships in the canonical build (maintainer statement on the SQLite forum;
   build is `--enable-all`). The **trigram tokenizer** gives indexed arbitrary
-  substring matching — same semantics as today's D1 FTS autocomplete.
-- `importDb(name, asyncFn)` (SQLite 3.44+) streams chunks from an async
-  callback into an OPFS database file — purpose-built for "download artifact,
-  write into OPFS".
+  substring matching — same semantics as the D1 FTS autocomplete. Verified
+  end-to-end against the real artifact: the trigram index survives
+  `sqlite3_deserialize` and answers `catalog_search MATCH` queries.
 - Decompress with `DecompressionStream('gzip')`: gzip is implemented
   everywhere; **brotli is NOT implemented in Chrome's DecompressionStream**.
-  So the artifact ships as `.gz`, decompressed in the worker before import.
+  So the artifact ships as `.gz`, decompressed in the worker before deserialize.
 
 ## Architecture
 
@@ -49,17 +57,21 @@ flowchart TB
     Res[createResource → typed RPC]
     Engine[fitment: src/fitment/engine.ts\nunchanged, pure TS]
   end
-  subgraph Worker["Catalog Worker (owns OPFS)"]
-    RPC[typed postMessage RPC ~60 lines]
-    Sqlite[sqlite-wasm OO1 API\nopfs-sahpool, read-only]
-    Import[importDb + DecompressionStream gzip]
+  subgraph Worker["Catalog Worker"]
+    RPC[typed postMessage RPC]
+    Sqlite[sqlite-wasm OO1 API\n:memory:, read-only]
+    Load[Cache API lookup → DecompressionStream gzip\n→ sqlite3_deserialize]
   end
-  CI[CI: replay intake-seed.sql into sqlite file\n+ FTS5 trigram catalog_search (migration 0008 DDL)\nVACUUM → gzip → dist/client/catalog/] --> Assets[Workers static asset:\ncatalog-<version>.sqlite3.gz, immutable]
-  Assets --> Import --> Sqlite
+  CI[Artifact build: read catalog from D1\n+ FTS5 trigram catalog_search\nVACUUM → gzip → public/catalog/] --> Assets[Workers static asset:\ncatalog.sqlite3.gz + catalog.manifest.json]
+  Assets --> Load --> Sqlite
   RPC --> Sqlite
   Res -->|page rows + total| UI
   UI -->|URL state → WHERE/ORDER BY/LIMIT/OFFSET| Res
 ```
+
+Note: `src/components/build/catalog.worker.ts` currently calls `getBuildView`
+directly rather than the `createResource`/TanStack split drawn above; TanStack
+Table is a dependency but the table renders from `BuildView` rows.
 
 ### Reuse this repo already has
 
@@ -76,16 +88,18 @@ flowchart TB
 
 ### Update & lifecycle model
 
-- Versioned OPFS filenames (`catalog-v<N>.sqlite3`). Boot: read tiny
-  `manifest.json` (no-cache); if version differs, stream-import the new file,
-  verify by opening + `PRAGMA user_version`, flip the active pointer, delete
-  the superseded file. No partial states: a file only becomes active after a
-  successful open.
+- Boot: fetch the tiny `catalog.manifest.json` (no-store) for the version, then
+  look up the compressed artifact in the Cache API under
+  `/catalog/catalog.sqlite3.gz?v=<version>`. Cache hit → no artifact network
+  request; miss → download, cache, and log `downloaded` in the status line.
+- A version change is a cache miss by construction (the key includes the
+  version), so a new catalog is fetched and the superseded entry is deleted on
+  write. No partial states: the database only becomes active after a successful
+  `sqlite3_deserialize` and row-count check.
 - Eviction (Safari 7-day rule, storage pressure): manifest says version X, no
-  local file → re-import ~2 MB. `navigator.storage.persist()` after first
-  meaningful interaction reduces frequency.
-- Quota failure (`QuotaExceededError` on import): fall back to in-memory DB
-  from the same artifact bytes; show "catalog not persisted" notice.
+  cache entry → re-download ~1.5 MB.
+- Cache API unavailable (private mode, quota): the catch falls through to a
+  direct network fetch per load; the catalog still works, just uncached.
 
 ### TanStack Table integration
 
@@ -99,16 +113,19 @@ TS as today.
 
 ## Risks
 
-1. **Trigram index size** — [INFERENCE] the FTS5 trigram index will inflate
-   the artifact beyond raw text size; measure with `sqlite3_analyzer` before
-   committing to a single-file artifact (fallback: per-kind DBs, or FTS5
-   prefix index + `LIKE` for substring).
-2. **Vite/worker bundling friction** — the official package documents a Vite
-   config (`optimizeDeps.exclude`) and ships sahpool Vite demos; expect some
-   wiring for the worker + wasm asset, not zero.
-3. **Multi-tab locking** — sahpool single-connection; Web Locks election is
-   the mitigation.
-4. **First-load weight** — one-time ~2–4 MB gzip import (measure artifact).
+1. **Trigram index size** — measured: the artifact is 21.6 MB raw, 1.5 MB
+   gzipped, of which `catalog_search` (trigram FTS5) is ~2.9 MB and
+   `catalog_records` ~17.4 MB. Well inside Workers static-asset limits.
+2. **Vite/worker bundling friction** — one accommodation was required, and it
+   is in `astro.config.mjs`: `optimizeDeps.exclude: ["@sqlite.org/sqlite-wasm"]`
+   keeps the wasm package out of Vite's dependency pre-bundling. That is a
+   dev-server concern; the `astro build` output bundles the worker and wasm
+   through the normal pipeline.
+3. **Multi-tab** — resolved by dropping the single-writer OPFS VFS; see the
+   revision note above. Verified: two tabs loading `/build` simultaneously both
+   render the catalog.
+4. **Per-tab memory** — each tab expands the ~21 MB database into wasm memory.
+5. **First-load weight** — one-time ~1.5 MB gzip download per catalog version.
 
 ## Sources
 
@@ -116,6 +133,8 @@ TS as today.
 - https://www.npmjs.com/package/@sqlite.org/sqlite-wasm (463K weekly downloads, Apache-2.0)
 - https://sqlite.org/wasm/doc/trunk/persistence.md (sahpool vs opfs VFS, COOP/COEP, importDb, locking)
 - https://sqlite.org/wasm/doc/trunk/api-oo1.md (OO1 API used by the worker)
+- https://sqlite.org/wasm/doc/trunk/api-c-style.md#sqlite3_deserialize (deserialize path used instead of an OPFS VFS)
+- https://developer.mozilla.org/en-US/docs/Web/API/Cache (Cache API shared by concurrent tabs)
 - https://www.sqlite.org/fts5.html (trigram tokenizer, substring matching)
 - https://github.com/rhashimoto/wa-sqlite (runner-up; VFS comparison, MIT)
 - https://github.com/phiresky/sql.js-httpvfs (range-request static SQLite)
