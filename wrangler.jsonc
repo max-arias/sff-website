@@ -13,19 +13,6 @@
       "database_id": "c0449c4d-92ba-4081-801d-55cd61511d6d"
     }
   ],
-  "kv_namespaces": [
-    {
-      "binding": "CATALOG_CACHE",
-      "id": "f9ff97d9716644dcabcbb09626eb6056"
-    }
-  ],
-  "ratelimits": [
-    {
-      "name": "CATALOG_SEARCH_RATE",
-      "namespace_id": "3801",
-      "simple": { "limit": 10, "period": 60 }
-    }
-  ],
   "env": {
     "preview": {
       "name": "sff-pc-builder-preview",
@@ -34,19 +21,6 @@
           "binding": "DB",
           "database_name": "sff-builder-preview",
           "database_id": "184b1c72-eb50-4dab-af54-3a50d4b1c304"
-        }
-      ],
-      "kv_namespaces": [
-        {
-          "binding": "CATALOG_CACHE",
-          "id": "93ab30768baa4924bc06a30ff8da7353"
-        }
-      ],
-      "ratelimits": [
-        {
-          "name": "CATALOG_SEARCH_RATE",
-          "namespace_id": "3802",
-          "simple": { "limit": 10, "period": 60 }
         }
       ]
     }

@@ -56,9 +56,9 @@ browser downloads `catalog.sqlite3.gz`, caches it, and queries it locally.
 - D1 is the **write-side source of truth and pipeline dependency only**. Do not
   reintroduce Worker-side catalog reads on `/build` — that is what the artifact
   replaced.
-- The remaining `/api/*` catalog routes still read D1 through the
-  `CATALOG_CACHE` KV binding (`src/server/d1.ts`). They have no client
-  consumers; treat them as legacy and do not build new features on them.
+- There are **no `/api/*` routes**. The Worker serves `/build`, `/`, and static
+  assets only, and reads no bindings at request time. Adding an API route that
+  queries D1 would reintroduce the read budget the artifact removed.
 - Any D1 query that remains on a hot path must be indexed and bounded. No
   whole-table reads, no worker-side catalog scans, no per-request aggregate
   counts.
