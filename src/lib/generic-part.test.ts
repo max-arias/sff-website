@@ -200,13 +200,8 @@ test("motherboardFormFactor returns explicit spec", () => {
   assert.equal(motherboardFormFactor(p), "mATX");
 });
 
-test("motherboardFormFactor infers from sourceSheet", () => {
-  const p = gp({ sourceSheet: "2025-03-mITX" });
-  assert.equal(motherboardFormFactor(p), "mITX");
-});
-
 test("motherboardFormFactor returns em-dash when unknown", () => {
-  const p = gp({ sourceSheet: "OddSheet" });
+  const p = gp({ specs: {} });
   assert.equal(motherboardFormFactor(p), "—");
 });
 

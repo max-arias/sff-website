@@ -41,14 +41,17 @@ function cell(row: Record<string, string>, key: string) {
 
 const UNKNOWN_VALUES = new Set(["", "-", "?", "tbd", "n/a", "na"]);
 
-// These are workbook classifications, not guesses from a board's product name.
-// Keep this map explicit as the workbook's sheet names evolve.
-const MOTHERBOARD_SOURCE_SHEET_FORM_FACTORS: Record<string, string> = {
-  mITX: "mITX",
-  mATX: "mATX",
-  "Motherboard mITX": "mITX",
-  "Motherboard mATX": "mATX",
-};
+// The workbook classifies boards by which sheet they live on ("mITX Boards",
+// "mATX Boards", earlier "Motherboard mITX"), not by anything in the product
+// name, so the sheet is the source of truth. Match on the form-factor token so
+// a renamed tab still maps, and leave the value absent when the sheet says
+// nothing about form factor.
+export function boardFormFactorFromSheet(sheetName: string): string {
+  const name = sheetName.toLowerCase();
+  if (name.includes("itx")) return "mITX";
+  if (name.includes("atx")) return "mATX";
+  return "";
+}
 
 function isUnknown(value: string) {
   return UNKNOWN_VALUES.has(value.trim().toLowerCase());
@@ -213,7 +216,7 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
       .filter(([key, value]) => key && value),
   );
   if (kind === "motherboard") {
-    const formFactor = MOTHERBOARD_SOURCE_SHEET_FORM_FACTORS[raw.sourceSheet];
+    const formFactor = boardFormFactorFromSheet(raw.sourceSheet);
     if (formFactor) specs.form_factor = formFactor;
   }
   const dimensions = Object.fromEntries(

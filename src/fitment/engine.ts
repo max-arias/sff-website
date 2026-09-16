@@ -416,13 +416,23 @@ export function evaluateMotherboardAgainstCase(
   const caseTokens = parseSupportTokens(caseSupport, motherboardTokenAliases);
   const boardToken = canonicalToken(boardFormFactor, motherboardTokenAliases);
 
-  if (!caseTokens.size || !boardToken) {
+  if (!boardToken) {
     return {
       code: "unknown-motherboard-form-factor",
       verdict: "conditional",
-      message: `Motherboard form factor cannot be fully checked; case support is "${caseSupport || "unknown"}" and board form factor is "${boardFormFactor || "unknown"}".`,
+      message: "Unknown form factor.",
       metric: "motherboardFormFactor",
       subject: "motherboard",
+    };
+  }
+
+  if (!caseTokens.size) {
+    return {
+      code: "unknown-motherboard-form-factor",
+      verdict: "conditional",
+      message: "Case motherboard support is unknown.",
+      metric: "motherboardFormFactor",
+      subject: "case",
     };
   }
 

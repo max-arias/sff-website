@@ -348,12 +348,25 @@ test("Motherboard form factor not supported → fail", () => {
   assert.equal(evidence.verdict, "fail");
 });
 
-test("Motherboard form factor unknown → conditional", () => {
+test("Motherboard form factor unknown → conditional, owned by the board", () => {
   const evidence = evaluateMotherboardAgainstCase(
     gp({ kind: "motherboard", specs: {} }),
     fakeCase({ raw: { Motherboard: "mITX" } }),
   );
   assert.equal(evidence.verdict, "conditional");
+  assert.equal(evidence.code, "unknown-motherboard-form-factor");
+  assert.equal(evidence.subject, "motherboard");
+  assert.equal(evidence.message, "Unknown form factor.");
+});
+
+test("Case motherboard support unknown → conditional, owned by the case", () => {
+  const evidence = evaluateMotherboardAgainstCase(
+    gp({ kind: "motherboard", specs: { form_factor: "mITX" } }),
+    fakeCase({ motherboard: "" }),
+  );
+  assert.equal(evidence.verdict, "conditional");
+  assert.equal(evidence.code, "unknown-motherboard-form-factor");
+  assert.equal(evidence.subject, "case");
 });
 
 // ---------------------------------------------------------------------------

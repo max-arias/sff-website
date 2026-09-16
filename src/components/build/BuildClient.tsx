@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { BuildView, BuildViewNumericFilter } from "../../lib/build-view";
-import { issueTitleForCode } from "../../fitment/issue-copy";
+import { issueDetail, issueTitleForCode } from "../../fitment/issue-copy";
 import { readIgnoredWarnings, writeIgnoredWarnings } from "../../lib/ignored-warning-storage";
 import { BrowserCatalogClient, type BrowserCatalogStatus } from "./catalog-client";
 
@@ -550,8 +550,9 @@ export default function BuildClient() {
                               <div class="mt-2.5">
                                 <h3 class="mb-1.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.08em] text-base-content/60">Issues</h3>
                                 <ul class="flex flex-col divide-y divide-base-300/60 overflow-hidden rounded-btn border border-base-300">
-                                  <For each={slot.issues}>{(issue) =>
-                                    <Show
+                                  <For each={slot.issues}>{(issue) => {
+                                    const detail = issueDetail(issue.title, issue.message);
+                                    return <Show
                                       when={!issue.ignored}
                                       fallback={
                                         <li class="flex items-center justify-between gap-2 bg-base-200/40 px-2.5 py-1.5">
@@ -586,10 +587,12 @@ export default function BuildClient() {
                                             </button>
                                           </Show>
                                         </div>
-                                        <p class="mt-1 text-xs leading-relaxed text-base-content/60">{issue.message}</p>
+                                        <Show when={detail}>
+                                          <p class="mt-1 text-xs leading-relaxed text-base-content/60">{detail}</p>
+                                        </Show>
                                       </li>
-                                    </Show>
-                                  }</For>
+                                    </Show>;
+                                  }}</For>
                                 </ul>
                               </div>
                             </Show>

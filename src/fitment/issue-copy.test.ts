@@ -5,7 +5,7 @@
  */
 
 import assert from "node:assert/strict";
-import { issueTitle, issueTitleForCode } from "./issue-copy";
+import { issueDetail, issueTitle, issueTitleForCode } from "./issue-copy";
 import { evaluateGpuAgainstCase } from "./engine";
 import type { CasePart, GpuPart } from "../types";
 
@@ -91,6 +91,15 @@ test("every code the GPU/case rules can emit has a mapped heading", () => {
       `${code} needs a heading in the copy map`,
     );
   }
+});
+
+test("a one-line finding does not repeat its heading as detail", () => {
+  assert.equal(issueDetail("Unknown form factor", "Unknown form factor."), "");
+  assert.equal(issueDetail("Unknown form factor", "unknown form factor"), "");
+  assert.equal(
+    issueDetail("GPU riser cable required", "This case requires a GPU riser."),
+    "This case requires a GPU riser.",
+  );
 });
 
 // ---------------------------------------------------------------------------

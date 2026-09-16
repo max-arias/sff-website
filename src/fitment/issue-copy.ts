@@ -26,7 +26,7 @@ const ISSUE_TITLES: Record<string, string> = {
   "unknown-psu-form-factor": "PSU form factor unknown",
   "custom-psu": "Custom PSU support",
   "psu-form-factor-mismatch": "PSU form factor mismatch",
-  "unknown-motherboard-form-factor": "Motherboard form factor unknown",
+  "unknown-motherboard-form-factor": "Unknown form factor",
   "custom-motherboard": "Custom motherboard support",
   "motherboard-form-factor-mismatch": "Motherboard form factor mismatch",
   "unknown-ram-type": "RAM type unknown",
@@ -70,4 +70,15 @@ export function issueTitle(code: string, fallback: string): string {
 /** Heading for a stored code with no evidence in hand, such as a stale ignore. */
 export function issueTitleForCode(code: string): string {
   return issueTitle(code, code.replace(/-/g, " "));
+}
+
+/**
+ * The detail line for an issue, or "" when the heading already carries it.
+ * A one-line finding such as "Unknown form factor" should read as one line
+ * rather than the same sentence twice.
+ */
+export function issueDetail(title: string, message: string): string {
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[.\s]+$/, "").replace(/\s+/g, " ");
+  return normalize(title) === normalize(message) ? "" : message;
 }

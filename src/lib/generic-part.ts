@@ -110,13 +110,7 @@ export function yesNoValue(part: GenericPart, keys: string[]) {
 // ---------------------------------------------------------------------------
 
 export function motherboardFormFactor(part: GenericPart): string {
-  const explicit = specValue(part, ["form_factor"]);
-  if (explicit) return explicit;
-
-  const sourceSheet = part.sourceSheet.toLowerCase();
-  if (sourceSheet.includes("mitx")) return "mITX";
-  if (sourceSheet.includes("matx")) return "mATX";
-  return "—";
+  return specValue(part, ["form_factor"]) || "—";
 }
 
 // ---------------------------------------------------------------------------

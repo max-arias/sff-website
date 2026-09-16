@@ -23,7 +23,7 @@
     "data:local": "npm run intake && npm run intake:enrich && npm run intake:sql && npm run db:migrate:local && npm run db:seed:local",
     "data:prod": "npm run intake && npm run intake:sql && npm run db:migrate:prod && npm run db:seed:prod",
     "data:preview": "npm run intake && npm run intake:sql && npm run db:migrate:preview && npm run db:seed:preview",
-    "test": "tsx src/lib/build-filter-params.test.ts && tsx src/lib/build-state.test.ts && tsx src/lib/build-view.test.ts && tsx src/lib/ignored-warning-storage.test.ts && tsx src/fitment/engine.test.ts && tsx src/fitment/issue-copy.test.ts && tsx src/lib/generic-part.test.ts && tsx src/server/catalog-search-query.test.ts",
+    "test": "tsx src/lib/build-filter-params.test.ts && tsx src/lib/build-state.test.ts && tsx src/lib/build-view.test.ts && tsx src/lib/ignored-warning-storage.test.ts && tsx src/lib/sheets.test.ts && tsx src/fitment/engine.test.ts && tsx src/fitment/issue-copy.test.ts && tsx src/lib/generic-part.test.ts && tsx src/server/catalog-search-query.test.ts",
     "test:d1-budget": "tsx src/server/catalog-search-query.test.ts",
     "intake": "tsx scripts/intake.ts",
     "intake:audit": "tsx scripts/audit-sff-workbook.ts",
