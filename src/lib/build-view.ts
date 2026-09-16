@@ -3028,6 +3028,7 @@ function slotSpecs(
       },
       { label: "PSU", value: part.psu || "-" },
       { label: "Riser", value: part.gpuRiser || "-" },
+      { label: "Motherboard", value: part.motherboard || "-" },
     ];
   }
   if (part && isGpuPart(part)) {
