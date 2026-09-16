@@ -336,7 +336,7 @@ export default function BuildClient(props: { siteOrigin?: string }) {
 
           return <>
             <div class="flex items-center justify-end max-w-[80rem] mx-auto px-4 lg:px-6 pr-14 lg:pr-6 pt-3 lg:hidden">
-              <label for="build-drawer-toggle" class="btn btn-ghost btn-sm">
+              <label for="build-drawer-toggle" class="btn btn-sm shadow-md">
                 <svg viewBox="0 0 24 24" aria-hidden="true" class="w-4 h-4">
                   <path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" />
                 </svg>
@@ -521,7 +521,7 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                                       title={row().verdictTooltip}
                                     >{row().verdictLabel}</span>
                                   </div>
-                                  <a class="btn btn-xs shrink-0" classList={{ "btn-primary": row().selected, "btn-ghost": !row().selected }} href={row().actionUrl} onClick={(event) => follow(event, row().actionUrl)}>{row().actionLabel}</a>
+                                  <a class="btn btn-sm shrink-0" classList={{ "btn-primary": row().selected, "btn-outline": !row().selected }} href={row().actionUrl} onClick={(event) => follow(event, row().actionUrl)}>{row().actionLabel}</a>
                                 </div>
                                 <div class="flex flex-col gap-2 p-3">
                                   <div class="grid grid-cols-2 gap-2">
