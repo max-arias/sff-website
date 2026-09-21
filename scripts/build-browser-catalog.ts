@@ -6,7 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 import { decodeCatalogRow, type D1Row } from "../src/server/d1-decoders";
-import type { PartKind } from "../src/types";
+import { searchablePartText } from "../src/lib/search-normalization";
+import type { CasePart, GenericPart, GpuPart, PartKind } from "../src/types";
 
 const databasePath = resolve("public/catalog/catalog.sqlite3");
 const artifactPath = resolve("public/catalog/catalog.sqlite3.gz");
@@ -32,12 +33,60 @@ type WranglerResult<T> = {
   success: boolean;
 };
 
+type CatalogPart = CasePart | GenericPart | GpuPart;
+
 type SearchRow = {
   id: string;
   kind: string;
   display_name: string;
   normalized_search_text: string;
 };
+
+function textField(part: GenericPart, key: string): string {
+  const value = part.raw[key];
+  return typeof value === "string" ? value : "";
+}
+
+function buildSearchRow(part: CatalogPart): SearchRow {
+  if (part.kind === "case" && "seller" in part) {
+    return {
+      id: part.id,
+      kind: part.kind,
+      display_name: `${part.seller} ${part.name}`.trim(),
+      normalized_search_text: searchablePartText(part.seller, part.name),
+    };
+  }
+
+  if (part.kind === "gpu" && "model" in part && "chipset" in part) {
+    return {
+      id: part.id,
+      kind: part.kind,
+      display_name: `${part.brand} ${part.name}`.trim(),
+      normalized_search_text: searchablePartText(part.brand, part.name, [
+        part.model,
+        part.chipset,
+      ]),
+    };
+  }
+
+  const genericPart = part as GenericPart;
+  return {
+    id: genericPart.id,
+    kind: genericPart.kind,
+    display_name: genericPart.displayName,
+    normalized_search_text:
+      textField(genericPart, "normalized_search_text") ||
+      searchablePartText(genericPart.brand, genericPart.name, [
+        textField(genericPart, "type"),
+        textField(genericPart, "cpu"),
+        textField(genericPart, "chipset"),
+        textField(genericPart, "socket"),
+        textField(genericPart, "form_factor"),
+        textField(genericPart, "psu_tier"),
+        textField(genericPart, "memory_type"),
+      ]),
+  };
+}
 
 async function queryCatalogSource<T>(command: string, source: CatalogSource): Promise<T[]> {
   let stdout: string;
@@ -90,9 +139,9 @@ const catalogRowCountProbe =
   "(select count(*) from ram) as count";
 
 /**
- * Local D1 is only usable after `db:migrate:local` and `db:seed:local`. A clean
- * checkout (CI) has neither, so fall back to remote D1 rather than failing the
- * build. The resolved source is always printed.
+ * Local D1 is the default source. Production reads must be explicit via the
+ * `--remote` entrypoints so a clean checkout cannot unexpectedly consume the
+ * account's D1 read budget.
  */
 async function resolveCatalogSource(): Promise<CatalogSource> {
   if (remoteRequested) return "remote";
@@ -100,14 +149,19 @@ async function resolveCatalogSource(): Promise<CatalogSource> {
   try {
     const [row] = await queryCatalogSource<{ count: number }>(catalogRowCountProbe, "local");
     if (row && row.count > 0) return "local";
-    console.warn(
-      `Local D1 "${databaseName}" has the catalog schema but no rows; building from remote D1.`
+    throw new Error(
+      `Local D1 "${databaseName}" has the catalog schema but no rows. ` +
+      "Seed it with npm run db:migrate:local && npm run db:seed:local."
     );
-  } catch {
-    console.warn(`Local D1 "${databaseName}" is not provisioned; building from remote D1.`);
-    console.warn("  For a local build run: npm run db:migrate:local && npm run db:seed:local");
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Local D1")) throw error;
+    throw new Error(
+      `Local D1 "${databaseName}" is not provisioned. ` +
+      "Run npm run db:migrate:local && npm run db:seed:local, " +
+      "or use the explicit production command: npm run catalog:browser:prod.",
+      { cause: error }
+    );
   }
-  return "remote";
 }
 
 async function main() {
@@ -141,11 +195,11 @@ async function main() {
         tokenize = 'trigram'
       );
     `);
-
     const insertRecord = database.prepare(
       "insert into catalog_records (id, kind, part_json) values (?, ?, ?)"
     );
     database.exec("begin");
+    const searchRows: SearchRow[] = [];
     for (const [table, kind] of catalogTables) {
       const rows = await queryCatalogSource<D1Row>(`select * from ${table}`, source);
       counts[kind] = rows.length;
@@ -154,16 +208,13 @@ async function main() {
         const partJson = JSON.stringify(part);
         sourceHash.update(part.id).update("\0").update(partJson).update("\0");
         insertRecord.run(part.id, kind, partJson);
+        searchRows.push(buildSearchRow(part));
       }
     }
-
-    const searchRows = await queryCatalogSource<SearchRow>(
-      "select id, kind, display_name, normalized_search_text from catalog_search",
-      source
-    );
     const insertSearch = database.prepare(
       "insert into catalog_search (id, kind, display_name, normalized_search_text) values (?, ?, ?, ?)"
     );
+
     for (const row of searchRows) {
       sourceHash
         .update(row.id)

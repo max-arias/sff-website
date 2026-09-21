@@ -17,9 +17,9 @@ npm run build      # builds public/catalog/ from local D1, then the site
 npm run cf:dev     # serve the Worker locally
 ```
 
-`npm run build` must run before `cf:dev`, because `/build` fetches the catalog
-artifact from `public/catalog/`. Without it the page loads and then reports that
-the catalog could not be fetched.
+`npm run build` requires a populated local D1. It never falls back to
+production D1; use `npm run catalog:browser:prod` only when intentionally
+refreshing the artifact from production data.
 
 The intake command fetches the public SFF Master List tabs, normalizes a broad generic part catalog plus the current case/GPU compatibility projections, and writes:
 
