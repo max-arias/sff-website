@@ -2010,14 +2010,39 @@ function filterSparseRows<T extends PartRecord>(
 ) {
   if (state.showSparseRows) return parts;
   const metricDefs = metricColumnsFor(state.kind);
-  return parts.filter((part) => hasFitmentRelevantData(part, metricDefs));
+  return parts.filter((part) => hasFitmentRelevantData(part, metricDefs, state.kind));
 }
+
+const SPARSE_REQUIREMENTS: Partial<Record<SelectableKind, string[]>> = {
+  gpu: ["length", "width", "thickness"],
+  psu: ["form-factor"],
+  "cpu-cooler": ["height"],
+  motherboard: ["form-factor"],
+  ram: ["height"],
+};
 
 function hasFitmentRelevantData(
   part: PartRecord,
   metricDefs: MetricColumnDef[],
+  kind?: SelectableKind,
 ) {
-  // A row has useful data if any displayed metric cell has a non-trivial value
+  if (kind === "gpu") {
+    const values = new Map(metricDefs.map((def) => [def.key, def.getValue(part)]));
+    return (
+      isUsefulCellValue(values.get("length") ?? "") &&
+      (isUsefulCellValue(values.get("width") ?? "") ||
+        isUsefulCellValue(values.get("thickness") ?? ""))
+    );
+  }
+  const requiredKeys = kind ? SPARSE_REQUIREMENTS[kind] : undefined;
+  if (requiredKeys) {
+    return requiredKeys.some((key) => {
+      const metric = metricDefs.find((def) => def.key === key);
+      return metric ? isUsefulCellValue(metric.getValue(part)) : false;
+    });
+  }
+
+  // Cases and other kinds use any displayed fitment-relevant cell.
   return metricDefs.some((def) => {
     const value = def.getValue(part);
     return isUsefulCellValue(value);

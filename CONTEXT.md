@@ -327,7 +327,14 @@ _Avoid_: Saved build, exported project file, catalog-wide shopping list
 - An **Ignored Warning** is excluded from verdict computation but remains listed on its **Part Issue List** with a restore action
 - **Ignored Warnings** live in the **Warning Ignore State** and are a browser-local preference, not part of **URL Build State**
 - Each engine evidence code should have an entry in the **Warning Copy Map** for issue rendering
-- The **Copyable Part List** is generated from the current **Build Configuration** and carries its **URL Build State**, so a pasted list still points back to the build
+ 
+## Ingestion Policy
+
+- Ingest only records that contain at least one normalized, physical, fitment-relevant field used by the app.
+- A record is eligible for the app-facing catalog only after it passes a kind-specific dimensional gate; names, release dates, clocks, TDP, retailer metadata, and other non-fitment values are insufficient by themselves.
+- The gate covers the current fitment fields: case dimensions and clearance envelopes; GPU dimensions and slot count; cooler dimensions and RAM clearance; PSU dimensions and form factor; motherboard dimensions and form factor; RAM height; and fan dimensions where fan fitment is modeled.
+- Keep rejected source rows only in raw/audit artifacts when needed for review. Do not expose dimensionless rows as selectable catalog records.
+- New sources must be audited for dimensional field coverage and mapped to the existing fitment model before any merge or D1 seed change.
 
 ## Example dialogue
 
