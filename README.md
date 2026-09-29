@@ -87,7 +87,4 @@ Completed architecture cleanup:
 - Moved view assembly out of `src/server/` into `src/lib/build-view.ts` so the same code serves the browser catalog worker and the in-memory test store.
 - Replaced the single-writer OPFS catalog database with a Cache API artifact plus an in-memory sqlite-wasm database, so multiple tabs can load `/build` concurrently.
 
-Current architecture TODOs:
-
-- Implement constraint-aware empty-slot actions / constraint jumps without breaking the public URL query contract.
-- Surface provenance/source attribution as a first-class fitment evidence feature.
+Open architecture work is tracked on the Obsidian board (`sff-builder/Board.md`; see `docs/agents/issue-tracker.md`): SFF-20 (constraint jumps), SFF-21 (provenance and source attribution) and SFF-22 (reducing `src/server/build-view.ts`).

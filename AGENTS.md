@@ -92,7 +92,20 @@ browser downloads `catalog.sqlite3.gz`, caches it, and queries it locally.
 
 ### Issue tracker
 
-Issues live in GitHub Issues; external pull requests are not a triage surface. See `docs/agents/issue-tracker.md`.
+Tickets live in the Obsidian vault, not GitHub Issues:
+
+- Board: `/mnt/c/Users/max/Documents/Obsidian Vault/sff-builder/Board.md`.
+- Tickets: `/mnt/c/Users/max/Documents/Obsidian Vault/sff-builder/tickets/SFF-<n>.md`.
+
+Read `/mnt/c/Users/max/Documents/Obsidian Vault/Ticket System.md` for the format
+and operations (create, read, list, comment, claim, resolve, frontier), triage
+labels, and how `/wayfinder` maps, children and blockers work.
+
+GitHub Issues are no longer used. Don't create issues with `gh`. When a skill
+says "publish to the issue tracker", create an SFF ticket; when it says "fetch
+the relevant ticket", read the SFF ticket note.
+
+External pull requests are not a ticket-triage surface.
 
 ### Triage labels
 

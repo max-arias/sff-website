@@ -195,16 +195,16 @@ Targets the same ~100-150 high-value cases as the previous strategy, with no out
 
 ## How this slots into the existing wayfinder map
 
-Still a clarifying input to the same two open tickets on `.issues/wayfinder-data-ingestion-map.md`:
+Still a clarifying input to the same two open tickets under SFF-12 (data-ingestion map on the Obsidian board):
 
-- **`attribution-and-license-boundaries`**: With scraping, the license story simplifies. Manufacturer-page images have an implicit "use for editorial/reference purposes" license that's standard for product marketing. Attribution is "Image © <Brand>" — no per-image license lookup needed. This is a much cleaner answer than the previous strategy's per-image license code.
-- **`source-roles-and-first-tranche`**: Image source is now a single source (manufacturer pages) with one role (product display). The image field joins the case record as a `supplemental/validation-only` data point in the same sense as a price.
+- **SFF-19, attribution and license boundaries**: With scraping, the license story simplifies. Manufacturer-page images have an implicit "use for editorial/reference purposes" license that's standard for product marketing. Attribution is "Image © <Brand>" — no per-image license lookup needed. This is a much cleaner answer than the previous strategy's per-image license code.
+- **SFF-13, source roles and first tranche**: Image source is now a single source (manufacturer pages) with one role (product display). The image field joins the case record as a `supplemental/validation-only` data point in the same sense as a price.
 
 If you want a formal wayfinder ticket for tracking, the natural shape is:
 
 > **Ticket**: "Scrape public product images for the most well-known SFF case brands"
 > **Type**: `wayfinder:task` (or `wayfinder:research` if the matching strategy is still a question)
-> **Parent**: `.issues/wayfinder-data-ingestion-map.md`
+> **Parent**: SFF-12 (the matching work is SFF-23)
 > **Blocked by**: nothing (the prior legal hesitation is removed)
 
 ---

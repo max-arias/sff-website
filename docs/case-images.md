@@ -112,7 +112,7 @@ Suggested approach:
 - For ambiguous matches, defer to an LLM review pass
 - Output: a `case_id → manifest_entry` mapping
 
-This step is best done as a separate ticket on the existing `.issues/wayfinder-data-ingestion` map, since it requires:
+This step is best done as a separate ticket under the data-ingestion map (SFF-12 on the board; the matching work is SFF-23), since it requires:
 - A schema decision (where does the mapping live? new column on `cases`? sidecar JSON?)
 - A matching threshold (manual curation? fully automated?)
 - An LLM-call decision (which model? what cost?)
@@ -177,7 +177,7 @@ For the long tail, the options are:
 | `.data/scrape-cache.json` | Per-brand status (completed / needs-agent-browser / failed), last attempt, reason, and entries. |
 | `.scratch/case-image-sources-research.md` | The earlier legal-framed research. Superseded but kept for the record. |
 | `.scratch/case-image-strategy.md` | Strategy doc. Updated with first-run results. |
-| `.issues/wayfinder-data-ingestion-map.md` | The existing data-ingestion wayfinder map. Image work is a clarifying input to its open tickets `attribution-and-license-boundaries` and `source-roles-and-first-tranche`. |
+| SFF-12 (Obsidian board) | The data-ingestion wayfinder map. Image work is a clarifying input to its open tickets SFF-19 (attribution and license boundaries) and SFF-13 (source roles and first tranche). |
 
 ---
 
@@ -185,12 +185,12 @@ For the long tail, the options are:
 
 This work is a clarifying input to the existing data-ingestion map, not a new map. Specifically:
 
-- **`attribution-and-license-boundaries`** — With scraping, the license story simplifies to a uniform "Image © <Brand>" attribution. No per-image license code lookup needed. The ticket's question explicitly contemplates per-source attribution rules; manufacturer-page scraping is the most common case in practice.
-- **`source-roles-and-first-tranche`** — The image source is one role (product display) with one strategy (scrape manufacturer pages, cache to R2). It fits as a single supplemental data point alongside the catalog's other source-decisions.
+- **SFF-19, attribution and license boundaries** — With scraping, the license story simplifies to a uniform "Image © <Brand>" attribution. No per-image license code lookup needed. The ticket's question explicitly contemplates per-source attribution rules; manufacturer-page scraping is the most common case in practice.
+- **SFF-13, source roles and first tranche** — The image source is one role (product display) with one strategy (scrape manufacturer pages, cache to R2). It fits as a single supplemental data point alongside the catalog's other source-decisions.
 
 If the user wants to formalize a tracking ticket for the matching/ingestion work, the natural shape is:
 
 > **Ticket**: "Match scraped manufacturer images to catalog cases and ingest to D1"
 > **Type**: `wayfinder:task`
-> **Parent**: `.issues/wayfinder-data-ingestion-map.md`
+> **Parent**: SFF-12 (data-ingestion map; the matching ticket is SFF-23)
 > **Blocked by**: completion of agent-browser pass (Step 1) and the matching strategy (Step 3)
