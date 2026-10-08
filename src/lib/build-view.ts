@@ -7,6 +7,7 @@ import {
   type BuildQueryState,
   type CaseIntent,
   type CaseVolumeTier,
+  type MotherboardFormFactorFilter,
   type PsuFeatureFilter,
   type PsuFormFactorFilter,
   type PsuTierFilter,
@@ -22,6 +23,7 @@ import {
 import { issueTitle } from "../fitment/issue-copy";
 import type { FitmentEvidence } from "../fitment/types";
 import {
+  canonicalToken,
   dimensionNumber,
   dimensionOrSpecNumber,
   dimensionOrSpecValue,
@@ -137,6 +139,7 @@ export interface BuildViewNumericFilterGroup {
   options: BuildViewFilterOption[];
   activeCount: number;
   summary: string;
+  legend?: Array<{ label: string; detail: string }>;
 }
 
 export interface BuildViewFilterOption {
@@ -1760,6 +1763,22 @@ const psuTokenAliases: Record<string, string> = {
   custom: "custom",
   "1u": "1u",
 };
+const motherboardTokenAliases: Record<string, string> = {
+  mitx: "mitx",
+  miniitx: "mitx",
+  matx: "matx",
+  microatx: "matx",
+  mdtx: "mdtx",
+  minidtx: "mdtx",
+  atx: "atx",
+  eatx: "eatx",
+  mstx: "mstx",
+  ministx: "mstx",
+  ssiceb: "ssiceb",
+  ssieeb: "ssieeb",
+  xlatx: "xlatx",
+  custom: "custom",
+};
 const PSU_TIER_FILTERS: Array<{
   value: PsuTierFilter;
   label: string;
@@ -1779,6 +1798,29 @@ const PSU_FORM_FACTOR_FILTERS: Array<{
   { value: "atx", label: "ATX" },
   { value: "tfx", label: "TFX" },
   { value: "1u", label: "1U" },
+];
+const MOTHERBOARD_FORM_FACTOR_FILTERS: Array<{
+  value: MotherboardFormFactorFilter;
+  label: string;
+}> = [
+  { value: "mitx", label: "Mini-ITX" },
+  { value: "mdtx", label: "Mini-DTX" },
+  { value: "matx", label: "Micro-ATX" },
+  { value: "atx", label: "ATX" },
+  { value: "eatx", label: "E-ATX" },
+  { value: "mstx", label: "Mini-STX" },
+  { value: "ssiceb", label: "SSI-CEB" },
+  { value: "ssieeb", label: "SSI-EEB" },
+  { value: "xlatx", label: "XL-ATX" },
+  { value: "custom", label: "Custom" },
+];
+const PSU_FORM_FACTOR_SIZE_LEGEND: Array<{ label: string; detail: string }> = [
+  { label: "SFX", detail: "125 × 63.5 × 100 mm" },
+  { label: "SFX-L", detail: "125 × 63.5 × 130 mm" },
+  { label: "Flex ATX", detail: "81.5 × 40.5 × 150 mm" },
+  { label: "ATX", detail: "150 × 86 × 140 mm" },
+  { label: "TFX", detail: "85 × 64 × 175 mm" },
+  { label: "1U", detail: "40.5 × 100 × 180 mm" },
 ];
 const PSU_FEATURE_FILTERS: Array<{
   value: PsuFeatureFilter;
@@ -1943,6 +1985,9 @@ export async function getBuildView(
       psuFormFactor: null,
       psuFeatures: [],
       gpuBrand: null,
+      caseMotherboardFormFactor: null,
+      casePsuFormFactor: null,
+      motherboardFormFactor: null,
     }),
     tableHeaders: tableHeaders(state),
     rows,
@@ -1975,9 +2020,15 @@ async function loadCandidates(
             state.search,
           )
       : pool;
-    const narrowed = applyCaseIntentFilter(
-      applyCaseVolumeTierFilter(
-        applyGpuBrandFilter(applyNumericFilters(filtered, state, metricDefs), state),
+    const narrowed = applyCaseMotherboardFormFactorFilter(
+      applyCasePsuFormFactorFilter(
+        applyCaseIntentFilter(
+          applyCaseVolumeTierFilter(
+            applyGpuBrandFilter(applyNumericFilters(filtered, state, metricDefs), state),
+            state,
+          ),
+          state,
+        ),
         state,
       ),
       state,
@@ -1997,6 +2048,7 @@ async function loadCandidates(
   );
   candidates = applyNumericFilters(candidates, state, metricDefs);
   candidates = applyPsuOptionFilters(candidates, state);
+  candidates = applyMotherboardFormFactorFilter(candidates, state);
 
   return {
     totalRows: candidates.length,
@@ -2126,6 +2178,46 @@ function applyCaseIntentFilter(parts: PartRecord[], state: BuildQueryState) {
     if (sorted[2] > STEAM_MACHINE_CASE_INTENT.maxDimensionMm) return false;
     return true;
   });
+}
+
+function applyCaseMotherboardFormFactorFilter(
+  parts: PartRecord[],
+  state: BuildQueryState,
+) {
+  if (state.kind !== "case" || !state.caseMotherboardFormFactor) return parts;
+  const filter = state.caseMotherboardFormFactor;
+  return parts.filter(
+    (part) =>
+      isCasePart(part) &&
+      parseSupportTokens(part.motherboard, motherboardTokenAliases).has(filter),
+  );
+}
+
+function applyCasePsuFormFactorFilter(
+  parts: PartRecord[],
+  state: BuildQueryState,
+) {
+  if (state.kind !== "case" || !state.casePsuFormFactor) return parts;
+  const filter = canonicalPsuFormFilter(state.casePsuFormFactor);
+  return parts.filter(
+    (part) =>
+      isCasePart(part) &&
+      parseSupportTokens(part.psu, psuTokenAliases).has(filter),
+  );
+}
+
+function applyMotherboardFormFactorFilter(
+  parts: PartRecord[],
+  state: BuildQueryState,
+) {
+  if (state.kind !== "motherboard" || !state.motherboardFormFactor) return parts;
+  return parts.filter(
+    (part) =>
+      isGenericPart(part) &&
+      part.kind === "motherboard" &&
+      canonicalToken(motherboardFormFactor(part), motherboardTokenAliases) ===
+        state.motherboardFormFactor,
+  );
 }
 
 async function searchTypedCandidates<T extends CasePart | GpuPart>(
@@ -2516,10 +2608,15 @@ function groupNumericFilters(
   if (state.kind === "psu") {
     for (const group of PSU_FILTER_GROUP_ORDER) map.set(group, []);
   }
+  if (state.kind === "motherboard") map.set("Form factor", []);
   for (const filter of filters) {
     const list = map.get(filter.group) ?? [];
     list.push(filter);
     map.set(filter.group, list);
+  }
+  if (state.kind === "case") {
+    map.set("Motherboard", []);
+    map.set("PSU", []);
   }
   return Array.from(map.entries()).flatMap(([label, groupFilters]) => {
     const options = filterOptionsForGroup(state, label, gpuParts);
@@ -2538,7 +2635,11 @@ function groupNumericFilters(
     } else {
       summary = `${activeCount} active`;
     }
-    return [{ label, filters: groupFilters, options, activeCount, summary }];
+    const legend =
+      state.kind === "case" && label === "PSU"
+        ? PSU_FORM_FACTOR_SIZE_LEGEND
+        : undefined;
+    return [{ label, filters: groupFilters, options, activeCount, summary, legend }];
   });
 }
 
@@ -2563,6 +2664,36 @@ function filterOptionsForGroup(
     }));
   }
   if (state.kind === "psu") return psuFilterOptionsForGroup(state, group);
+  if (state.kind === "case" && group === "Motherboard") {
+    return MOTHERBOARD_FORM_FACTOR_FILTERS.map((option) => ({
+      label: option.label,
+      href: buildUrl(state, {
+        caseMotherboardFormFactor:
+          state.caseMotherboardFormFactor === option.value ? null : option.value,
+      }),
+      active: state.caseMotherboardFormFactor === option.value,
+    }));
+  }
+  if (state.kind === "case" && group === "PSU") {
+    return PSU_FORM_FACTOR_FILTERS.map((option) => ({
+      label: option.label,
+      href: buildUrl(state, {
+        casePsuFormFactor:
+          state.casePsuFormFactor === option.value ? null : option.value,
+      }),
+      active: state.casePsuFormFactor === option.value,
+    }));
+  }
+  if (state.kind === "motherboard" && group === "Form factor") {
+    return MOTHERBOARD_FORM_FACTOR_FILTERS.map((option) => ({
+      label: option.label,
+      href: buildUrl(state, {
+        motherboardFormFactor:
+          state.motherboardFormFactor === option.value ? null : option.value,
+      }),
+      active: state.motherboardFormFactor === option.value,
+    }));
+  }
   if (state.kind !== "case" || group !== "Dimensions") return [];
   const options: BuildViewFilterOption[] = CASE_VOLUME_TIERS.map((tier) => ({
     label: tier.label,
@@ -2826,6 +2957,28 @@ function buildFilterChips(
     });
   }
 
+  if (state.kind === "case" && state.caseMotherboardFormFactor) {
+    const option = MOTHERBOARD_FORM_FACTOR_FILTERS.find(
+      (candidate) => candidate.value === state.caseMotherboardFormFactor,
+    );
+    chips.push({
+      label: `Mobo: ${option?.label ?? state.caseMotherboardFormFactor}`,
+      href: buildUrl(state, { caseMotherboardFormFactor: null }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "case" && state.casePsuFormFactor) {
+    const option = PSU_FORM_FACTOR_FILTERS.find(
+      (candidate) => candidate.value === state.casePsuFormFactor,
+    );
+    chips.push({
+      label: `PSU: ${option?.label ?? state.casePsuFormFactor}`,
+      href: buildUrl(state, { casePsuFormFactor: null }),
+      tone: "active",
+    });
+  }
+
   if (state.kind === "gpu" && state.gpuBrand) {
     chips.push({
       label: `Brand: ${state.gpuBrand}`,
@@ -2850,6 +3003,17 @@ function buildFilterChips(
     chips.push({
       label: `Form: ${option?.label ?? state.psuFormFactor}`,
       href: buildUrl(state, { psuFormFactor: null }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "motherboard" && state.motherboardFormFactor) {
+    const option = MOTHERBOARD_FORM_FACTOR_FILTERS.find(
+      (candidate) => candidate.value === state.motherboardFormFactor,
+    );
+    chips.push({
+      label: `Form: ${option?.label ?? state.motherboardFormFactor}`,
+      href: buildUrl(state, { motherboardFormFactor: null }),
       tone: "active",
     });
   }

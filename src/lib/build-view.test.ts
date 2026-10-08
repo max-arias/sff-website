@@ -588,6 +588,92 @@ test("cell-level evidence — PSU form factor mismatch highlights form-factor ce
   );
 });
 
+test("case motherboard form-factor filter narrows rows and lists options", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [
+      fakeCase({ id: "c-mitx", motherboard: "Mini-ITX" }),
+      fakeCase({ id: "c-atx", motherboard: "ATX" }),
+    ],
+    gpus: [],
+    parts: [],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost/build?kind=case&case-mobo=mitx"),
+    store,
+  );
+
+  assert.deepEqual(view.rows.map((row) => row.id), ["c-mitx"]);
+  const group = view.numericFilterGroups.find((g) => g.label === "Motherboard");
+  assert.ok(group, "Motherboard group exists");
+  assert.deepEqual(
+    group!.options.map((option) => option.label),
+    [
+      "Mini-ITX",
+      "Mini-DTX",
+      "Micro-ATX",
+      "ATX",
+      "E-ATX",
+      "Mini-STX",
+      "SSI-CEB",
+      "SSI-EEB",
+      "XL-ATX",
+      "Custom",
+    ],
+  );
+  assert.equal(group!.options.find((o) => o.label === "Mini-ITX")!.active, true);
+});
+
+test("case PSU form-factor filter narrows rows and exposes size legend", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [
+      fakeCase({ id: "c-sfx", psu: "SFX" }),
+      fakeCase({ id: "c-atx", psu: "ATX" }),
+    ],
+    gpus: [],
+    parts: [],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost/build?kind=case&case-psu=sfx"),
+    store,
+  );
+
+  assert.deepEqual(view.rows.map((row) => row.id), ["c-sfx"]);
+  const group = view.numericFilterGroups.find((g) => g.label === "PSU");
+  assert.ok(group, "PSU group exists");
+  assert.equal(group!.legend?.length, 6);
+  assert.deepEqual(group!.legend![0], {
+    label: "SFX",
+    detail: "125 × 63.5 × 100 mm",
+  });
+  assert.deepEqual(
+    group!.options.map((option) => option.label),
+    ["SFX", "SFX-L", "Flex ATX", "ATX", "TFX", "1U"],
+  );
+});
+
+test("motherboard form-factor filter narrows rows and leads group order", async () => {
+  const store = new InMemoryCatalogStore({
+    cases: [],
+    gpus: [],
+    parts: [
+      { kind: "motherboard", id: "m-itx", displayName: "ITX Board", name: "ITX Board", brand: "Test", sourceSheet: "Mobo", rowNumber: 1, status: "", availabilityStatus: "available" as const, sellerUrl: "", productUrl: "", specs: { form_factor: "Mini-ITX" }, dimensions: {}, releaseYear: null, flags: [], raw: {}, links: {} },
+      { kind: "motherboard", id: "m-atx", displayName: "ATX Board", name: "ATX Board", brand: "Test", sourceSheet: "Mobo", rowNumber: 2, status: "", availabilityStatus: "available" as const, sellerUrl: "", productUrl: "", specs: { form_factor: "ATX" }, dimensions: {}, releaseYear: null, flags: [], raw: {}, links: {} },
+    ],
+  });
+  const view = await getBuildView(
+    new URL("http://localhost/build?kind=motherboard&mobo-form=mitx"),
+    store,
+  );
+
+  assert.deepEqual(view.rows.map((row) => row.id), ["m-itx"]);
+  assert.equal(view.numericFilterGroups[0]?.label, "Form factor");
+  assert.equal(
+    view.numericFilterGroups[0]?.options.find((o) => o.label === "Mini-ITX")
+      ?.active,
+    true,
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------

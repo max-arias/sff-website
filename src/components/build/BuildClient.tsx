@@ -428,6 +428,19 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                                       </div>
                                     </div>
                                   </Show>
+                                  <Show when={group.legend && group.legend.length > 0}>
+                                    <div class="flex flex-col gap-1">
+                                      <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">
+                                        Form factor sizes (W × H × D, typical)
+                                      </span>
+                                      <For each={group.legend}>{(item) =>
+                                        <div class="flex items-baseline justify-between gap-2">
+                                          <span class="font-mono text-[0.7rem] font-semibold text-base-content/70">{item.label}</span>
+                                          <span class="font-mono text-[0.7rem] text-base-content/50">{item.detail}</span>
+                                        </div>
+                                      }</For>
+                                    </div>
+                                  </Show>
                                   <For each={group.filters}>{(filter) =>
                                     <label class="flex flex-col gap-1">
                                       <span class="font-mono text-[0.6rem] font-bold uppercase tracking-[0.06em] text-base-content/60">{filter.label}</span>

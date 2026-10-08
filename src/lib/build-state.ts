@@ -24,6 +24,9 @@ export interface BuildQueryState {
   psuTier: PsuTierFilter | null;
   psuFormFactor: PsuFormFactorFilter | null;
   psuFeatures: PsuFeatureFilter[];
+  caseMotherboardFormFactor: MotherboardFormFactorFilter | null;
+  casePsuFormFactor: PsuFormFactorFilter | null;
+  motherboardFormFactor: MotherboardFormFactorFilter | null;
 }
 
 export type CaseVolumeTier = "sub-10l" | "10l-20l" | "over-20l";
@@ -39,6 +42,18 @@ export type PsuFormFactorFilter =
   | "atx"
   | "tfx"
   | "1u";
+
+export type MotherboardFormFactorFilter =
+  | "mitx"
+  | "matx"
+  | "mdtx"
+  | "atx"
+  | "eatx"
+  | "mstx"
+  | "ssiceb"
+  | "ssieeb"
+  | "xlatx"
+  | "custom";
 
 export type PsuFeatureFilter =
   | "atx-3"
@@ -61,6 +76,9 @@ export type BuildQueryPatch = Partial<{
   psuTier: PsuTierFilter | null;
   psuFormFactor: PsuFormFactorFilter | null;
   psuFeatures: PsuFeatureFilter[];
+  caseMotherboardFormFactor: MotherboardFormFactorFilter | null;
+  casePsuFormFactor: PsuFormFactorFilter | null;
+  motherboardFormFactor: MotherboardFormFactorFilter | null;
 }>;
 
 export const slotOrder: SlotDescriptor[] = [
@@ -143,6 +161,13 @@ export function parseBuildQuery(url: URL): BuildQueryState {
     psuTier: sanitizePsuTier(url.searchParams.get("psu-tier")),
     psuFormFactor: sanitizePsuFormFactor(url.searchParams.get("psu-form")),
     psuFeatures: url.searchParams.getAll("psu-feature").filter(isPsuFeature),
+    caseMotherboardFormFactor: sanitizeMotherboardFormFactor(
+      url.searchParams.get("case-mobo"),
+    ),
+    casePsuFormFactor: sanitizePsuFormFactor(url.searchParams.get("case-psu")),
+    motherboardFormFactor: sanitizeMotherboardFormFactor(
+      url.searchParams.get("mobo-form"),
+    ),
   };
 }
 
@@ -185,6 +210,18 @@ export function buildSearchParams(
       : state.psuFormFactor;
   const psuFeatures =
     patch.psuFeatures !== undefined ? patch.psuFeatures : state.psuFeatures;
+  const caseMotherboardFormFactor =
+    patch.caseMotherboardFormFactor !== undefined
+      ? patch.caseMotherboardFormFactor
+      : state.caseMotherboardFormFactor;
+  const casePsuFormFactor =
+    patch.casePsuFormFactor !== undefined
+      ? patch.casePsuFormFactor
+      : state.casePsuFormFactor;
+  const motherboardFormFactor =
+    patch.motherboardFormFactor !== undefined
+      ? patch.motherboardFormFactor
+      : state.motherboardFormFactor;
   const params = new URLSearchParams();
 
   slotOrder.forEach(({ kind: slotKind }) => {
@@ -208,6 +245,15 @@ export function buildSearchParams(
   if (kind === "psu" && psuFormFactor) params.set("psu-form", psuFormFactor);
   if (kind === "psu") {
     for (const feature of psuFeatures) params.append("psu-feature", feature);
+  }
+  if (kind === "case" && caseMotherboardFormFactor) {
+    params.set("case-mobo", caseMotherboardFormFactor);
+  }
+  if (kind === "case" && casePsuFormFactor) {
+    params.set("case-psu", casePsuFormFactor);
+  }
+  if (kind === "motherboard" && motherboardFormFactor) {
+    params.set("mobo-form", motherboardFormFactor);
   }
   for (const [paramName, value] of Object.entries(numericFilters)) {
     if (
@@ -264,6 +310,27 @@ function sanitizePsuFormFactor(value: string | null): PsuFormFactorFilter | null
     value === "tfx" ||
     value === "1u"
     ? value
+    : null;
+}
+
+const MOTHERBOARD_FORM_FACTOR_VALUES: Record<string, true> = {
+  mitx: true,
+  matx: true,
+  mdtx: true,
+  atx: true,
+  eatx: true,
+  mstx: true,
+  ssiceb: true,
+  ssieeb: true,
+  xlatx: true,
+  custom: true,
+};
+
+function sanitizeMotherboardFormFactor(
+  value: string | null,
+): MotherboardFormFactorFilter | null {
+  return value && Object.hasOwn(MOTHERBOARD_FORM_FACTOR_VALUES, value)
+    ? (value as MotherboardFormFactorFilter)
     : null;
 }
 

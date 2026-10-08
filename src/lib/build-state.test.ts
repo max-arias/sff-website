@@ -34,6 +34,9 @@ function emptyState(): BuildQueryState {
     psuTier: null,
     psuFormFactor: null,
     psuFeatures: [],
+    caseMotherboardFormFactor: null,
+    casePsuFormFactor: null,
+    motherboardFormFactor: null,
   };
 }
 
@@ -295,6 +298,53 @@ test("buildSearchParams omits psu-tier for non-psu kind", () => {
   };
   const params = buildSearchParams(state);
   assert.equal(params.get("psu-tier"), null);
+});
+
+// ---------------------------------------------------------------------------
+// Case motherboard/PSU and motherboard form-factor filters
+// ---------------------------------------------------------------------------
+
+test("buildSearchParams writes case-mobo and case-psu for case kind", () => {
+  const state = {
+    ...emptyState(),
+    kind: "case" as const,
+    caseMotherboardFormFactor: "mitx" as const,
+    casePsuFormFactor: "sfx" as const,
+  };
+  const params = buildSearchParams(state);
+  assert.equal(params.get("case-mobo"), "mitx");
+  assert.equal(params.get("case-psu"), "sfx");
+
+  const reparsed = parseBuildQuery(new URL(`/build?${params}`, "http://localhost"));
+  assert.equal(reparsed.caseMotherboardFormFactor, "mitx");
+  assert.equal(reparsed.casePsuFormFactor, "sfx");
+});
+
+test("buildSearchParams writes mobo-form for motherboard kind only", () => {
+  const state = {
+    ...emptyState(),
+    kind: "motherboard" as const,
+    motherboardFormFactor: "atx" as const,
+  };
+  assert.equal(buildSearchParams(state).get("mobo-form"), "atx");
+  assert.equal(
+    buildSearchParams(state, { kind: "gpu" }).get("mobo-form"),
+    null,
+    "mobo-form should be omitted for non-motherboard kind",
+  );
+});
+
+test("switching from case to gpu drops case-mobo and case-psu", () => {
+  const state: BuildQueryState = {
+    ...emptyState(),
+    kind: "case",
+    caseMotherboardFormFactor: "mitx",
+    casePsuFormFactor: "sfx",
+  };
+  const params = buildSearchParams(state, { kind: "gpu" });
+  assert.equal(params.get("case-mobo"), null);
+  assert.equal(params.get("case-psu"), null);
+  assert.equal(params.get("kind"), "gpu");
 });
 
 // ---------------------------------------------------------------------------
