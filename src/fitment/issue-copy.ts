@@ -20,6 +20,7 @@ const ISSUE_TITLES: Record<string, string> = {
   "watercooled-gpu": "Watercooled GPU",
   "power-connector-psu-warning": "GPU power connector",
   "case-status": "Case status note",
+  "printed-case": "3D-printed case",
   "unknown-case-cooler-limit": "Cooler height limit unknown",
   "unknown-cooler-height": "Cooler height unknown",
   "cooler-height-exceeds": "Cooler height exceeds case limit",

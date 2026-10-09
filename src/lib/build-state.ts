@@ -18,6 +18,7 @@ export interface BuildQueryState {
   showSparseRows: boolean;
   caseVolumeTier: CaseVolumeTier | null;
   caseIntent: CaseIntent | null;
+  caseSource: CaseSource | null;
   gpuBrand: string | null;
   /** Generic numeric max filters keyed by query param name (e.g. "case-max-volume-l", "max-gpu-length-mm") */
   numericFilters: Record<string, number>;
@@ -32,6 +33,8 @@ export interface BuildQueryState {
 export type CaseVolumeTier = "sub-10l" | "10l-20l" | "over-20l";
 
 export type CaseIntent = "steam-machine";
+
+export type CaseSource = "commercial" | "printed" | "printable";
 
 export type PsuTierFilter = "a-or-better" | "b-or-better" | "c-or-better";
 
@@ -71,6 +74,7 @@ export type BuildQueryPatch = Partial<{
   showSparseRows: boolean;
   caseVolumeTier: CaseVolumeTier | null;
   caseIntent: CaseIntent | null;
+  caseSource: CaseSource | null;
   gpuBrand: string | null;
   numericFilters: Record<string, number>;
   psuTier: PsuTierFilter | null;
@@ -156,6 +160,7 @@ export function parseBuildQuery(url: URL): BuildQueryState {
     showSparseRows: url.searchParams.get("show-sparse") === "1",
     caseVolumeTier: sanitizeCaseVolumeTier(url.searchParams.get("case-volume")),
     caseIntent: sanitizeCaseIntent(url.searchParams.get("case-intent")),
+    caseSource: sanitizeCaseSource(url.searchParams.get("case-source")),
     gpuBrand: sanitizeGpuBrand(url.searchParams.get("gpu-brand")),
     numericFilters: parseNumericFilters(url),
     psuTier: sanitizePsuTier(url.searchParams.get("psu-tier")),
@@ -198,6 +203,7 @@ export function buildSearchParams(
       : state.caseVolumeTier;
   const caseIntent =
     patch.caseIntent !== undefined ? patch.caseIntent : state.caseIntent;
+  const caseSource = patch.caseSource !== undefined ? patch.caseSource : state.caseSource;
   const gpuBrand = patch.gpuBrand !== undefined ? patch.gpuBrand : state.gpuBrand;
   const numericFilters =
     patch.numericFilters !== undefined
@@ -240,6 +246,7 @@ export function buildSearchParams(
   if (showSparseRows) params.set("show-sparse", "1");
   if (kind === "case" && caseVolumeTier) params.set("case-volume", caseVolumeTier);
   if (kind === "case" && caseIntent) params.set("case-intent", caseIntent);
+  if (kind === "case" && caseSource) params.set("case-source", caseSource);
   if (kind === "gpu" && gpuBrand) params.set("gpu-brand", gpuBrand);
   if (kind === "psu" && psuTier) params.set("psu-tier", psuTier);
   if (kind === "psu" && psuFormFactor) params.set("psu-form", psuFormFactor);
@@ -289,6 +296,10 @@ function sanitizeCaseVolumeTier(value: string | null): CaseVolumeTier | null {
 
 function sanitizeCaseIntent(value: string | null): CaseIntent | null {
   return value === "steam-machine" ? value : null;
+}
+
+function sanitizeCaseSource(value: string | null): CaseSource | null {
+  return value === "commercial" || value === "printed" || value === "printable" ? value : null;
 }
 
 function sanitizeGpuBrand(value: string | null): string | null {

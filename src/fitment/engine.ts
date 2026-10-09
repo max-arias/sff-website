@@ -89,6 +89,17 @@ const TIGHT_FIT_MM = 5;
 // Individual pair checks (pure)
 // ---------------------------------------------------------------------------
 
+function addPrintedCaseAdvisory(evidence: FitmentEvidence[], casePart: CasePart) {
+  if (!casePart.printed) return;
+  evidence.push({
+    code: "printed-case",
+    verdict: "conditional",
+    message: `Community 3D-printed design by ${casePart.printed.creator}; clearances are the creator's reported values and print tolerances can change fit.`,
+    subject: "case",
+    advisory: true,
+  });
+}
+
 /**
  * Evaluate GPU fitment against a case.
  * Returns an array of evidence (can be advisory, conditional, or fail).
@@ -194,6 +205,8 @@ export function evaluateGpuAgainstCase(
       advisory: true,
     });
   }
+
+  addPrintedCaseAdvisory(evidence, casePart);
 
   // --- Dimensional comparisons ---
 
@@ -594,6 +607,7 @@ export function evaluateCandidateFitment(
   const evidence: FitmentEvidence[] = [];
 
   if (candidate.kind === "case") {
+    if (!build.activeGpu) addPrintedCaseAdvisory(evidence, candidate as CasePart);
     if (build.activeGpu)
       evidence.push(
         ...evaluateGpuAgainstCase(build.activeGpu, candidate as CasePart),
@@ -684,6 +698,7 @@ export function evaluateBuildFitment(
   build: BuildContext,
 ): { verdict: FitmentDecisionVerdict; evidence: FitmentEvidence[] } {
   const allEvidence: FitmentEvidence[] = [];
+  if (build.activeCase && !build.activeGpu) addPrintedCaseAdvisory(allEvidence, build.activeCase);
 
   if (build.activeCase && build.activeGpu) {
     allEvidence.push(

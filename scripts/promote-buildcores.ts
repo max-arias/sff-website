@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildSeedSql } from "../src/lib/sql";
+import { loadPrintedCases, withPrintedCases } from "../src/lib/printed-cases";
 import type { GenericPart, IntakeResult, PartKind } from "../src/types";
 
 type AcceptedRecord = {
@@ -109,7 +110,9 @@ const merged: IntakeResult = {
   generatedAt: new Date().toISOString(),
   parts: [...current.parts, ...buildcoresParts],
 };
-let sql = buildSeedSql(merged);
+const printedCases = await loadPrintedCases();
+console.log(`Included ${printedCases.length} printed case(s).`);
+let sql = buildSeedSql(withPrintedCases(merged, printedCases));
 try {
   const jevOverrides = await readFile(jevOverridesPath, "utf8");
   sql += `\n${jevOverrides}`;

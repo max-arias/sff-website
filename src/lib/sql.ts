@@ -126,11 +126,12 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
     "status",
     "availability_status",
     "last_update",
+    "printed_json",
     "created_at",
     "updated_at"
   ].join(", ")}) values (${[
     escapeSql(slug),
-    escapeSql(searchablePartText(part.brand, part.name, [casePart?.style ?? "", casePart?.motherboard ?? "", casePart?.psu ?? ""])),
+    escapeSql(searchablePartText(part.brand, part.name, [casePart?.style ?? "", casePart?.motherboard ?? "", casePart?.psu ?? "", casePart?.printed ? "3d printed" : ""])),
     escapeSql(casePart?.releaseYear ?? part.releaseYear),
     escapeSql(casePart?.seller ?? ""),
     escapeSql(part.name),
@@ -216,6 +217,7 @@ export function caseInsert(runId: string, slug: string, part: GenericPart, caseP
     escapeSql(part.status ?? ""),
     escapeSql(part.availabilityStatus),
     escapeSql(spec(part, ["last_update"])),
+    casePart?.printed ? json(casePart.printed) : "null",
     "current_timestamp",
     "current_timestamp"
   ].join(", ")});`;

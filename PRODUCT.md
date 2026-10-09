@@ -101,7 +101,7 @@ These are future layers once the core fitment engine behavior is stable.
 
 - **Data Attribution**: The build panel credits the sources whose values reach the catalog — SFF PC Master List, PSU tier list, and Cybenetics — and links to each. Per-claim traceability, and credits for the workbook's review and case-reference links, need the pipeline to persist hyperlink targets first: link-only cells currently import as their visible label, the word "Link" (see [DATA.md](./DATA.md)).
 - **Community-intent filters**: support saved, named filter bundles for common builder goals that show up repeatedly in forums and Reddit threads. For example, a `console-like SFF` filter could narrow the case table to living-room or console-style cases, then let users inspect which GPUs and other parts fit those cases. These should remain filter-and-explain tools, not ranked recommendations: failing and conditional rows should stay visible with evidence, and any subjective labels such as "console-like", "sandwich style", or "vertical footprint" should be treated as explicit, reviewable catalog attributes with provenance.
-- 3D-printable SFF case directory: start printable/open-source case projects as a separate informative directory rather than adding them directly to the `/build` fitment table. Only promote printable cases into the core case catalog after their dimensional constraints are manually verified. See [Future Feature: 3D-Printable SFF Case Directory](./docs/future-printable-cases.md).
+- Community 3D-printed cases live in the `/build` case table as credited rows (creator, source post, file status, images, creator's build), with uncertainty shown as `conditional`. See [Printed-case import procedure](./docs/printed-cases.md).
 
 ## User Experience Direction
 

@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import type { BuildView, BuildViewNumericFilter, BuildViewRow } from "../../lib/build-view";
+import type { BuildView, BuildViewNumericFilter, BuildViewRow, BuildViewPrintedCase } from "../../lib/build-view";
 import { issueDetail, issueTitleForCode } from "../../fitment/issue-copy";
 import { dataSources } from "../../lib/data-sources";
 import { readIgnoredWarnings, writeIgnoredWarnings } from "../../lib/ignored-warning-storage";
@@ -49,6 +49,14 @@ function MetricTile(props: { metric: MobileMetric }) {
       style={isPsuBadge(metric().value) ? { "background-color": psuBadgeBackground(metric().value) } : undefined}
     ><CatalogValue value={metric().value} /></span>
   </div>;
+}
+
+function PrintedCaseByline(props: { printed: BuildViewPrintedCase }) {
+  return <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-base-content/60">
+    <span class="badge badge-xs badge-outline font-mono font-bold uppercase tracking-[0.06em]">3D printed</span>
+    <span>by <a class="link link-hover" href={props.printed.creatorUrl || props.printed.sourceUrl} target="_blank" rel="noreferrer">{props.printed.creator}</a></span>
+    <span>· <a class="link link-hover" href={props.printed.sourceUrl} target="_blank" rel="noreferrer">{props.printed.sourceLabel}</a></span>
+  </span>;
 }
 
 function isPsuBadge(value: string): boolean {
@@ -320,6 +328,7 @@ export default function BuildClient(props: { siteOrigin?: string }) {
           const hasActiveNumericFilter = () => currentView().numericFilterGroups.some((group) => group.activeCount > 0)
             || Boolean(currentView().state.caseVolumeTier)
             || Boolean(currentView().state.caseIntent)
+            || Boolean(currentView().state.caseSource)
             || Boolean(currentView().state.gpuBrand);
           const actionHeader = () => currentView().tableHeaders.find((header) => header.label === "Action");
           const dataTableHeaders = () => currentView().tableHeaders.filter((header) => header.label !== "Action");
@@ -477,6 +486,11 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                         }}</For>
                       </div>
                     </Show>
+                    <For each={currentView().activeFilterChips.filter((chip) => chip.label.startsWith("Source:"))}>{(chip) =>
+                      <a class="badge badge-outline gap-1 text-xs" href={chip.href} onClick={(event) => follow(event, chip.href)} aria-label={`Clear ${chip.label}`}>
+                        {chip.label} <span aria-hidden="true">×</span>
+                      </a>
+                    }</For>
 
                     <label class="flex items-center flex-shrink-0">
                       <span
@@ -528,6 +542,7 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                                 <div class="flex items-start justify-between gap-3 px-3 py-2.5 border-b border-base-300/70 bg-base-200/60">
                                   <div class="flex min-w-0 flex-col items-start gap-1.5">
                                     <h2 class="truncate text-sm font-semibold leading-tight" title={row().title}>{row().title}</h2>
+                                    <Show when={row().printed}>{(p) => <PrintedCaseByline printed={p()} />}</Show>
                                     <span
                                       class="badge badge-xs font-mono font-bold uppercase tracking-[0.06em]"
                                       classList={{ "badge-success": row().verdict === "pass", "badge-warning": row().verdict === "conditional", "badge-error": row().verdict === "fail", "badge-ghost": row().verdict === "unscored" }}
@@ -591,7 +606,10 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                                 classList={{ "data-row-selected": row().selected }}
                               >
                                 <td class="action-column whitespace-nowrap w-[1%]"><a class="btn btn-xs" classList={{ "btn-primary": row().selected, "btn-ghost": !row().selected }} href={row().actionUrl} onClick={(event) => follow(event, row().actionUrl)}>{row().actionLabel}</a></td>
-                                <td><strong class="block max-w-[24rem] truncate text-[0.95rem] font-semibold leading-snug" title={row().title}>{row().title}</strong></td>
+                                <td>
+                                  <strong class="block max-w-[24rem] truncate text-[0.95rem] font-semibold leading-snug" title={row().title}>{row().title}</strong>
+                                  <Show when={row().printed}>{(p) => <PrintedCaseByline printed={p()} />}</Show>
+                                </td>
                                 <For each={row().cells}>{(cell) =>
                                   <td class="font-mono text-sm whitespace-nowrap tabular-nums" classList={{ "bg-error/[0.06] !text-error font-bold": cell.evidenceVerdict === "fail", "bg-warning/[0.04] !text-warning font-semibold": cell.evidenceVerdict === "conditional" }} style={isPsuBadge(cell.value) ? { "background-color": psuBadgeBackground(cell.value) } : undefined} title={cell.evidenceMessages.join("; ")}><CatalogValue value={cell.value} /></td>
                                 }</For>
@@ -644,6 +662,29 @@ export default function BuildClient(props: { siteOrigin?: string }) {
                             <div class="flex items-center justify-between gap-2"><span class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.1em] text-base-content/60">{slot.label}</span><div class="flex items-center gap-1.5"><span class="badge badge-xs font-mono font-bold uppercase tracking-[0.06em]" classList={{ "badge-success": slot.verdict === "pass", "badge-warning": slot.verdict === "conditional", "badge-error": slot.verdict === "fail", "badge-ghost": slot.verdict === "unscored" }} title={slot.verdictTooltip}>{slot.verdictCopy}</span><a class="btn btn-xs btn-ghost btn-square text-error" href={slot.clearUrl} aria-label={`Clear ${slot.kind}`} title="Clear" onClick={(event) => follow(event, slot.clearUrl)}><svg viewBox="0 0 24 24" aria-hidden="true" class="w-3 h-3"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" /></svg></a></div></div>
                             <h2 class="text-base font-semibold leading-tight mt-2.5 mb-0.5">{slot.title}</h2>
                             <Show when={slot.subtitle}><p class="text-sm text-base-content/60"><CatalogValue value={slot.subtitle ?? ""} /></p></Show>
+                            <Show when={slot.printed}>{(p) => <>
+                              <PrintedCaseByline printed={p()} />
+                              <Show when={p().images.length}>
+                                <div class="mt-2.5 grid grid-cols-3 gap-1.5">
+                                  <For each={p().images}>{(img) =>
+                                    <a href={img.url} target="_blank" rel="noreferrer">
+                                      <img src={img.url} alt={img.caption || `${slot.title} photo by ${p().creator}`} loading="lazy" referrerpolicy="no-referrer" class="aspect-square w-full rounded-btn object-cover bg-base-200" />
+                                    </a>
+                                  }</For>
+                                </div>
+                                <p class="mt-1 text-[0.65rem] text-base-content/50">Photos © {p().creator}</p>
+                              </Show>
+                              <p class="mt-1.5 text-sm">
+                                <Show when={p().filesUrl} fallback={p().filesLabel}>
+                                  <a class="link link-hover" href={p().filesUrl} target="_blank" rel="noreferrer">{p().filesLabel}</a>
+                                </Show>
+                              </p>
+                              <Show when={p().referenceBuildUrl}>
+                                <a class="btn btn-xs btn-outline mt-2" href={p().referenceBuildUrl} onClick={(e) => follow(e, p().referenceBuildUrl)}>Load creator's build</a>
+                              </Show>
+                              <Show when={p().referenceBuildNotes}><p class="mt-1 text-xs text-base-content/60">Also used: {p().referenceBuildNotes}</p></Show>
+                              <Show when={p().printNotes}><p class="mt-1 text-xs text-base-content/60">{p().printNotes}</p></Show>
+                            </>}</Show>
                             <Show when={slot.specs.length > 0}><dl
                               class="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2.5 pt-2.5 border-t border-base-300"
                               classList={{ "border-b": slot.issues.length > 0 || Boolean(slot.note), "pb-2.5": slot.issues.length > 0 || Boolean(slot.note) }}

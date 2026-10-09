@@ -83,6 +83,7 @@ function fakeCase(overrides: Partial<CasePart> = {}): CasePart {
     releaseYear: null,
     flags: [],
     raw: {},
+    printed: null,
     ...overrides,
   };
 }

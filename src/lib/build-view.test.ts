@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { getBuildView } from "./build-view";
 import { InMemoryCatalogStore } from "../server/in-memory-catalog-store";
 import type { CasePart, GpuPart } from "../types";
+import { parsePrintedCaseFile } from "./printed-cases";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -66,6 +67,7 @@ function fakeCase(overrides: Partial<CasePart> = {}): CasePart {
     releaseYear: null,
     flags: [],
     raw: {},
+    printed: null,
     ...overrides,
   };
 }
@@ -672,6 +674,46 @@ test("motherboard form-factor filter narrows rows and leads group order", async 
       ?.active,
     true,
   );
+});
+
+test("printed source filters and creator build replace selection", async () => {
+  const printed = parsePrintedCaseFile("test.json", {
+    case: { Case: "Test", "Volume (L)": "3.5" },
+    printed: {
+      creator: "u/test", sourceUrl: "https://www.reddit.com/r/sffpc/comments/example/",
+      postedAt: "2026-10-01", files: { status: "unreleased", url: "" },
+      referenceBuild: { parts: { gpu: "g1" }, notes: "Ryzen 5 7600" },
+    },
+  }).printed;
+  const published = { ...printed, files: { status: "published" as const, url: "https://example.com/files", license: "CC BY" } };
+  const store = new InMemoryCatalogStore({
+    cases: [
+      fakeCase({ id: "commercial-1" }),
+      fakeCase({ id: "printed-1", printed }),
+      fakeCase({ id: "printable-1", printed: published }),
+    ],
+    gpus: [fakeGpu({ id: "g1" })], parts: [],
+  });
+  for (const [source, expected] of [
+    ["printed", ["printed-1", "printable-1"]],
+    ["printable", ["printable-1"]],
+    ["commercial", ["commercial-1"]],
+  ] as const) {
+    const view = await getBuildView(new URL(`http://localhost/build?kind=case&case-source=${source}`), store);
+    assert.deepEqual(view.rows.map((row) => row.id).sort(), [...expected].sort());
+    assert.equal(view.numericFilterGroups.find((group) => group.label === "Source")?.activeCount, 1);
+    assert(view.activeFilterChips.some((chip) => chip.label.startsWith("Source:")));
+    assert.equal(new URL(view.clearFiltersUrl, "http://localhost").searchParams.has("case-source"), false);
+  }
+  const view = await getBuildView(new URL("http://localhost/build?case=printable-1&gpu=x&ram=old"), store);
+  const slot = view.slots.find((slot) => slot.kind === "case")!;
+  const url = new URL(slot.printed!.referenceBuildUrl, "http://localhost");
+  assert.equal(url.searchParams.get("case"), "printable-1");
+  assert.equal(url.searchParams.get("gpu"), "g1");
+  for (const kind of ["psu", "cpu-cooler", "motherboard", "ram"]) assert.equal(url.searchParams.has(kind), false);
+  assert(slot.issues.some((issue) => issue.code === "printed-case" && issue.dismissible));
+  assert.equal(slot.printed!.sourceLabel, "Reddit post");
+  assert.equal(slot.printed!.filesLabel, "Files (CC BY)");
 });
 
 // ---------------------------------------------------------------------------

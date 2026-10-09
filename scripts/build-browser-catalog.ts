@@ -53,7 +53,7 @@ function buildSearchRow(part: CatalogPart): SearchRow {
       id: part.id,
       kind: part.kind,
       display_name: `${part.seller} ${part.name}`.trim(),
-      normalized_search_text: searchablePartText(part.seller, part.name),
+      normalized_search_text: searchablePartText(part.seller, part.name, part.printed ? ["3d printed"] : []),
     };
   }
 

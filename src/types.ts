@@ -91,6 +91,27 @@ export interface PsuTierEntry {
   raw: Record<string, string>;
 }
 
+export type PrintedCaseFilesStatus = "published" | "on-request" | "unreleased";
+
+export interface PrintedCaseImage {
+  url: string;
+  caption: string;
+}
+
+export interface PrintedCaseInfo {
+  creator: string;
+  creatorUrl: string;
+  sourceUrl: string;
+  postedAt: string;
+  files: { status: PrintedCaseFilesStatus; url: string; license: string };
+  images: PrintedCaseImage[];
+  referenceBuild: {
+    parts: Partial<Record<Exclude<SelectableKind, "case">, string>>;
+    notes: string;
+  };
+  printNotes: string;
+}
+
 export interface CasePart {
   kind: "case";
   id: string;
@@ -155,6 +176,7 @@ export interface CasePart {
   releaseYear: number | null;
   flags: string[];
   raw: Record<string, RawScalar>;
+  printed: PrintedCaseInfo | null;
 }
 
 export interface GpuPart {

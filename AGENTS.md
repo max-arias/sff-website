@@ -43,6 +43,7 @@ Read these files before making product or UX changes:
 
 - The catalog is stored in per-kind D1 tables: `cases`, `gpus`, `cpu_coolers`, `fans`, `motherboards`, `psus`, and `ram`.
 - Selected part identity should use concrete catalog record IDs from those tables.
+- Community 3D-printed cases are committed JSON files in `data/printed-cases/`, merged into the seed at SQL generation; import procedure: `docs/printed-cases.md`.
 
 ## Catalog Delivery And D1 Budget
 

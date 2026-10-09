@@ -3,6 +3,7 @@ import type {
   GenericPart,
   GpuPart,
   PartKind,
+  PrintedCaseInfo,
   RawScalar,
   SelectableKind,
   SelectablePartByKind,
@@ -78,6 +79,7 @@ function decodeCase(row: D1Row): CasePart {
     counts: { drive25Max: nullableNumber(row.drive_2_5_max), drive35Max: nullableNumber(row.drive_3_5_max), drive525Max: nullableNumber(row.drive_5_25_max), fan40mm: nullableNumber(row.fan_40mm_count), fan60mm: nullableNumber(row.fan_60mm_count), fan80mm: nullableNumber(row.fan_80mm_count), fan92mm: nullableNumber(row.fan_92mm_count), fan120mm: nullableNumber(row.fan_120mm_count), fan140mm: nullableNumber(row.fan_140mm_count), fan180mm: nullableNumber(row.fan_180mm_count), fan200mm: nullableNumber(row.fan_200mm_count), usbA20: nullableNumber(row.usb_a_2_0_count), usbA32: nullableNumber(row.usb_a_3_2_count), usbC: nullableNumber(row.usb_c_count) },
     radiatorFlags: { has120mm: booleanish(row.radiator_120mm), has140mm: booleanish(row.radiator_140mm), has200mm: booleanish(row.radiator_200mm), has240mm: booleanish(row.radiator_240mm), has280mm: booleanish(row.radiator_280mm), has360mm: booleanish(row.radiator_360mm), has420mm: booleanish(row.radiator_420mm), hasTopHat: booleanish(row.radiator_top_hat) },
     hasJack35mm: booleanish(row.jack_3_5mm), priceCny: nullableNumber(row.price_cny), priceUsd: nullableNumber(row.price_usd), releaseYear: nullableNumber(row.release_year), flags: [], raw: {},
+    printed: row.printed_json ? JSON.parse(text(row.printed_json)) as PrintedCaseInfo : null,
   };
 }
 

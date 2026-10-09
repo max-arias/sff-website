@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fetchAndNormalizeAll } from "../src/lib/sheets";
 import { buildSeedSql } from "../src/lib/sql";
+import { loadPrintedCases, withPrintedCases } from "../src/lib/printed-cases";
 import type { IntakeResult, PsuTierOverride } from "../src/types";
 
 const snapshotPath = resolve(".data/intake-snapshot.json");
@@ -57,7 +58,9 @@ if (sqlOnly) {
   }
 
   const overrides = await loadOverrides();
-  const sql = buildSeedSql(result, overrides);
+  const printedCases = await loadPrintedCases();
+  console.log(`Included ${printedCases.length} printed case(s).`);
+  const sql = buildSeedSql(withPrintedCases(result, printedCases), overrides);
   await writeAtomic(sqlPath, sql);
 
   console.log(
@@ -88,7 +91,9 @@ if (sqlOnly) {
 
   // Load existing overrides if present so regenerated SQL uses them
   const overrides = await loadOverrides();
-  const sql = buildSeedSql(result, overrides);
+  const printedCases = await loadPrintedCases();
+  console.log(`Included ${printedCases.length} printed case(s).`);
+  const sql = buildSeedSql(withPrintedCases(result, printedCases), overrides);
 
   await writeAtomic(snapshotPath, JSON.stringify(result, null, 2));
   await writeAtomic(sqlPath, sql);

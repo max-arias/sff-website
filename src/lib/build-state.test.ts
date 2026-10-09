@@ -29,6 +29,7 @@ function emptyState(): BuildQueryState {
     showSparseRows: false,
     caseVolumeTier: null,
     caseIntent: null,
+    caseSource: null,
     gpuBrand: null,
     numericFilters: {},
     psuTier: null,
@@ -114,12 +115,14 @@ test("buildSearchParams → parseBuildQuery round-trips", () => {
     psuTier: null,
     psuFormFactor: null,
     caseIntent: null,
+    caseSource: "printed",
   };
   const url = buildUrl(state);
   const reparsed = parseBuildQuery(new URL(url, "http://localhost"));
 
   assert.equal(reparsed.kind, state.kind);
   assert.equal(reparsed.search, state.search);
+  assert.equal(reparsed.caseSource, state.caseSource);
   assert.equal(reparsed.sort, state.sort);
   assert.equal(reparsed.dir, state.dir);
   assert.equal(reparsed.showSparseRows, state.showSparseRows);
@@ -458,11 +461,13 @@ test("switching from case to gpu drops case-volume and case-intent", () => {
     kind: "case",
     caseVolumeTier: "sub-10l",
     caseIntent: "steam-machine",
+    caseSource: "printed",
     numericFilters: { "case-max-volume-l": 15 },
   };
   const params = buildSearchParams(state, { kind: "gpu" });
   assert.equal(params.get("case-volume"), null, "case-volume should be dropped");
   assert.equal(params.get("case-intent"), null, "case-intent should be dropped");
+  assert.equal(params.get("case-source"), null, "case-source should be dropped");
   // case-max-volume-l should also be dropped since it's a case-only numeric param
   assert.equal(params.get("case-max-volume-l"), null, "case-max-volume-l should be dropped");
   assert.equal(params.get("kind"), "gpu");

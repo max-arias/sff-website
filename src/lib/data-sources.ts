@@ -43,4 +43,5 @@ export const dataSources: DataSource[] = [
     href: "https://www.cybenetics.com",
     note: "PSU efficiency and noise grades",
   },
+  { label: "r/sffpc", href: "https://www.reddit.com/r/sffpc/", note: "community 3D-printed cases, credited per case" },
 ];

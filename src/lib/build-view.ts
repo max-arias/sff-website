@@ -6,6 +6,7 @@ import {
   tabOrder,
   type BuildQueryState,
   type CaseIntent,
+  type CaseSource,
   type CaseVolumeTier,
   type MotherboardFormFactorFilter,
   type PsuFeatureFilter,
@@ -13,7 +14,7 @@ import {
   type PsuTierFilter,
   type SelectableKind,
 } from "./build-state";
-import type { CasePart, FitVerdict, GenericPart, GpuPart } from "../types";
+import type { CasePart, FitVerdict, GenericPart, GpuPart, PrintedCaseImage } from "../types";
 import type { CatalogStore } from "./catalog-store";
 import {
   evaluateCandidateFitment as engineEvaluateCandidateFitment,
@@ -75,6 +76,19 @@ export interface BuildViewIssue {
   ignored: boolean;
 }
 
+export interface BuildViewPrintedCase {
+  creator: string;
+  creatorUrl: string;
+  sourceUrl: string;
+  sourceLabel: string;
+  filesLabel: string;
+  filesUrl: string;
+  images: PrintedCaseImage[];
+  referenceBuildUrl: string;
+  referenceBuildNotes: string;
+  printNotes: string;
+}
+
 export interface BuildViewSlot {
   kind: SelectableKind;
   label: string;
@@ -83,6 +97,7 @@ export interface BuildViewSlot {
   state: "resolved" | "unresolved";
   title: string;
   subtitle: string;
+  printed: BuildViewPrintedCase | null;
   note: string;
   verdict: DisplayVerdict;
   verdictCopy: string;
@@ -99,6 +114,7 @@ export interface BuildViewRow {
   kind: SelectableKind;
   title: string;
   subtitle: string;
+  printed: BuildViewPrintedCase | null;
   cells: BuildViewCell[];
   verdict: DisplayVerdict;
   verdictLabel: string;
@@ -1748,6 +1764,12 @@ const CASE_INTENT_OPTIONS: Array<{ value: CaseIntent; label: string; tooltip: st
   },
 ];
 
+const CASE_SOURCE_FILTERS: Array<{ value: CaseSource; label: string; tooltip: string }> = [
+  { value: "commercial", label: "Commercial", tooltip: "Cases sold by a manufacturer or seller." },
+  { value: "printed", label: "3D printed", tooltip: "Community 3D-printed designs, credited to their creators." },
+  { value: "printable", label: "Printable files", tooltip: "3D-printed designs whose print files are published." },
+];
+
 import { FILTER_GROUPS } from "./build-filter-params";
 
 const psuTokenAliases: Record<string, string> = {
@@ -1981,6 +2003,7 @@ export async function getBuildView(
       numericFilters: {},
       caseVolumeTier: null,
       caseIntent: null,
+      caseSource: null,
       psuTier: null,
       psuFormFactor: null,
       psuFeatures: [],
@@ -2022,9 +2045,12 @@ async function loadCandidates(
       : pool;
     const narrowed = applyCaseMotherboardFormFactorFilter(
       applyCasePsuFormFactorFilter(
-        applyCaseIntentFilter(
-          applyCaseVolumeTierFilter(
-            applyGpuBrandFilter(applyNumericFilters(filtered, state, metricDefs), state),
+        applyCaseSourceFilter(
+          applyCaseIntentFilter(
+            applyCaseVolumeTierFilter(
+              applyGpuBrandFilter(applyNumericFilters(filtered, state, metricDefs), state),
+              state,
+            ),
             state,
           ),
           state,
@@ -2180,6 +2206,16 @@ function applyCaseIntentFilter(parts: PartRecord[], state: BuildQueryState) {
   });
 }
 
+function applyCaseSourceFilter(parts: PartRecord[], state: BuildQueryState) {
+  if (state.kind !== "case" || !state.caseSource) return parts;
+  return parts.filter((part) => {
+    if (!isCasePart(part)) return false;
+    if (state.caseSource === "commercial") return !part.printed;
+    if (state.caseSource === "printed") return Boolean(part.printed);
+    return part.printed?.files.status === "published";
+  });
+}
+
 function applyCaseMotherboardFormFactorFilter(
   parts: PartRecord[],
   state: BuildQueryState,
@@ -2273,6 +2309,28 @@ type EvalContext = {
   ignored: ReadonlySet<string>;
 };
 
+function printedCaseView(state: BuildQueryState, part: PartRecord): BuildViewPrintedCase | null {
+  if (!isCasePart(part) || !part.printed) return null;
+  const info = part.printed;
+  const hostname = new URL(info.sourceUrl).hostname;
+  return {
+    creator: info.creator,
+    creatorUrl: info.creatorUrl || info.sourceUrl,
+    sourceUrl: info.sourceUrl,
+    sourceLabel: hostname === "reddit.com" || hostname.endsWith(".reddit.com") ? "Reddit post" : "Project page",
+    filesLabel: info.files.status === "published"
+      ? info.files.license ? `Files (${info.files.license})` : "Files"
+      : info.files.status === "on-request" ? "Files on request" : "Files unreleased",
+    filesUrl: info.files.status === "published" ? info.files.url : "",
+    images: info.images.slice(0, 3),
+    referenceBuildUrl: Object.keys(info.referenceBuild.parts).length
+      ? buildUrl({ ...state, selectedIds: {} }, { selectedIds: { case: part.id, ...info.referenceBuild.parts } })
+      : "",
+    referenceBuildNotes: info.referenceBuild.notes,
+    printNotes: info.printNotes,
+  };
+}
+
 function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
   const descriptor = slotOrder.find((slot) => slot.kind === kind)!;
   const id = ctx.state.selectedIds[kind] ?? "";
@@ -2290,6 +2348,7 @@ function buildSlot(ctx: EvalContext, kind: SelectableKind): BuildViewSlot {
     state: id && !part ? "unresolved" : "resolved",
     title: id ? (part ? displayTitle(part) : "Unresolved selection") : "Empty",
     subtitle: part ? displaySubtitle(part) : id || "",
+    printed: part ? printedCaseView(ctx.state, part) : null,
     note:
       id && !part
         ? "The id is still preserved in URL state, but the catalog can no longer resolve it."
@@ -2354,6 +2413,7 @@ function buildRow(ctx: EvalContext, part: PartRecord): BuildViewRow {
     kind,
     title: displayTitle(part),
     subtitle: displaySubtitle(part),
+    printed: printedCaseView(ctx.state, part),
     cells,
     mobileMetrics: metricLabels.map((label, i) => ({
       label,
@@ -2617,6 +2677,7 @@ function groupNumericFilters(
   if (state.kind === "case") {
     map.set("Motherboard", []);
     map.set("PSU", []);
+    map.set("Source", []);
   }
   return Array.from(map.entries()).flatMap(([label, groupFilters]) => {
     const options = filterOptionsForGroup(state, label, gpuParts);
@@ -2692,6 +2753,14 @@ function filterOptionsForGroup(
           state.motherboardFormFactor === option.value ? null : option.value,
       }),
       active: state.motherboardFormFactor === option.value,
+    }));
+  }
+  if (state.kind === "case" && group === "Source") {
+    return CASE_SOURCE_FILTERS.map((option) => ({
+      label: option.label,
+      href: buildUrl(state, { caseSource: state.caseSource === option.value ? null : option.value }),
+      active: state.caseSource === option.value,
+      tooltip: option.tooltip,
     }));
   }
   if (state.kind !== "case" || group !== "Dimensions") return [];
@@ -2953,6 +3022,15 @@ function buildFilterChips(
     chips.push({
       label: intent?.label ?? state.caseIntent,
       href: buildUrl(state, { caseIntent: null }),
+      tone: "active",
+    });
+  }
+
+  if (state.kind === "case" && state.caseSource) {
+    const option = CASE_SOURCE_FILTERS.find((candidate) => candidate.value === state.caseSource);
+    chips.push({
+      label: `Source: ${option?.label ?? state.caseSource}`,
+      href: buildUrl(state, { caseSource: null }),
       tone: "active",
     });
   }

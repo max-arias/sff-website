@@ -1,0 +1,36 @@
+{
+  "case": {
+    "Case": "Riserless 3.5L",
+    "Volume (L)": "3.5",
+    "Case Length (mm)": "212",
+    "Case Width (mm)": "192",
+    "Case Height (mm)": "86",
+    "Motherboard": "mITX",
+    "PSU": "Custom",
+    "GPU Riser": "-",
+    "Case material": "PETG"
+  },
+  "printed": {
+    "creator": "u/kowlick",
+    "creatorUrl": "https://www.reddit.com/user/kowlick",
+    "sourceUrl": "https://www.reddit.com/r/sffpc/comments/1wxsonn/35l_3dprinted_case_riserless_4060_amd_7600_hdplex/",
+    "postedAt": "2026-10-04",
+    "files": {
+      "status": "unreleased",
+      "url": "",
+      "license": ""
+    },
+    "images": [
+      { "url": "https://i.redd.it/68yodx322jth1.jpg", "caption": "" },
+      { "url": "https://i.redd.it/0jct8y322jth1.jpg", "caption": "" },
+      { "url": "https://i.redd.it/9r6o4x322jth1.jpg", "caption": "" },
+      { "url": "https://i.redd.it/wu2exy322jth1.jpg", "caption": "" },
+      { "url": "https://i.redd.it/7ueoax322jth1.jpg", "caption": "" }
+    ],
+    "referenceBuild": {
+      "parts": { "psu": "hdplex-250w-gan-passive-aio-atx" },
+      "notes": "AMD Ryzen 5 7600; GeForce RTX 4060 low-profile (exact model unspecified); mini-ITX motherboard (model unspecified); 40mm Noctua fans. CPU cooler and RAM models not reported."
+    },
+    "printNotes": "Creator's experimental design, not recommended by the creator: PETG with 3mm walls, printed on a Prusa MK3S in two pieces (box and panel cover). Designed specifically around the creator's low-profile RTX 4060, with about 1mm between components and case; generic GPU and CPU cooler clearance limits are not reported. HDPLEX 250W GaN PSU sits in front of the CPU cooling fan. Creator reports gaming worked, but Cinebench quickly caused thermal throttling. Gallery includes v1 (hexagonal openings) and v1.1 (slots for top-mounted 40mm Noctua fans and an extra panel screw); fan count is not specified."
+  }
+}

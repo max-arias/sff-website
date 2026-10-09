@@ -179,7 +179,7 @@ function normalizeSpecKey(key: string) {
     .replace(/^_|_$/g, "");
 }
 
-function normalizeGenericPart(raw: RawSheetRow): GenericPart {
+export function normalizeGenericPart(raw: RawSheetRow): GenericPart {
   const values = raw.values;
   const links = raw.links;
   const kind = partKindFromSheet(raw.sourceSheet);
@@ -276,7 +276,7 @@ function normalizeGenericPart(raw: RawSheetRow): GenericPart {
   };
 }
 
-function normalizeCase(raw: RawSheetRow): CasePart {
+export function normalizeCase(raw: RawSheetRow): CasePart {
   const values = raw.values;
   const seller = cell(values, "Seller");
   const name = cell(values, "Case");
@@ -380,6 +380,7 @@ function normalizeCase(raw: RawSheetRow): CasePart {
     releaseYear: extractReleaseYear(values),
     flags,
     raw: values,
+    printed: null,
   };
 }
 
